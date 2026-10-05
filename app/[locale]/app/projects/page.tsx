@@ -17,7 +17,7 @@ export default async function ProjectsPage({params,searchParams}:{params:Promise
    <section className={styles.list}>
     <div className={styles.listHead}><div><small>PORTFOLIO</small><h2>{en?"All projects":"โครงการทั้งหมด"}</h2></div><span>{rows.length} {en?"projects":"โครงการ"}</span></div>
     {rows.map(p=>{const available=p.units?.filter(u=>u.status==="AVAILABLE").length??0; return <details className={styles.project} key={p.id}>
-      <summary><div className={styles.mark}>{p.code.slice(0,2)}</div><div className={styles.identity}><small>{p.code}</small><b>{p.name}</b></div><span className={styles.badge}>{p.status}</span><div className={styles.mini}><span>{p.plots?.length??0}<small>{en?"Plots":"แปลง"}</small></span><span>{p.units?.length??0}<small>{en?"Units":"ยูนิต"}</small></span><span>{available}<small>{en?"Available":"ว่าง"}</small></span></div><i>⌄</i></summary>
+      <summary><div className={styles.mark}>{p.code.slice(0,2)}</div><div className={styles.identity}><small>{p.code}</small><b><Link href={`/${locale}/app/projects/${p.id}`}>{p.name}</Link></b></div><span className={styles.badge}>{p.status}</span><div className={styles.mini}><span>{p.plots?.length??0}<small>{en?"Plots":"แปลง"}</small></span><span>{p.units?.length??0}<small>{en?"Units":"ยูนิต"}</small></span><span>{available}<small>{en?"Available":"ว่าง"}</small></span></div><i>⌄</i></summary>
       <form action={updateProject} className={styles.form}><input type="hidden" name="locale" value={locale}/><input type="hidden" name="id" value={p.id}/>
        <label>{en?"Project code":"รหัสโครงการ"}<input name="code" defaultValue={p.code} required/></label>
        <label>{en?"Project name":"ชื่อโครงการ"}<input name="name" defaultValue={p.name} required/></label>
