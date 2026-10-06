@@ -25,7 +25,7 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
     supabase.from("plots").select("id,code,land_area_sqm").eq("project_id",project.id).order("code").limit(100),
     supabase.from("units").select("id,code,name,status,list_price,currency_code").eq("project_id",project.id).order("code").limit(100),
   ]) : [{data:[]},{data:[]}];
-  const portfolio = portfolioRows?.[0];
+  const portfolio = (portfolioRows?.[0] ?? null) as null | {total_projects:number|string|null;total_plots:number|string|null;total_units:number|string|null;available_units:number|string|null;sold_contracted_units:number|string|null;priced_units:number|string|null;listed_value:number|string|null};
   const projectPlots = plots ?? [];
   const projectUnits = units ?? [];
   const available = projectUnits.filter(u => u.status === "AVAILABLE").length;
