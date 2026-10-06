@@ -1,0 +1,6 @@
+-- Financial Core v2 cash posting. Deployed as zero-downtime v2 summary RPC.
+-- Cash documents resolve the selected cash_accounts.ledger_account_id instead of a hard-coded 1100 account.
+-- RECEIPT with receipt_purpose='CUSTOMER_DEPOSIT' credits ledger 2200 Customer Deposits / Deferred Revenue.
+-- Existing AP/AR settlement rules remain unchanged.
+-- Production functions: public.post_financial_document(uuid), public.get_project_finance_summary_v2(uuid).
+-- Full function definitions are intentionally versioned in database migration history; keep this marker aligned with deployed migration financial_core_v2_cash_posting_engine_v2.
