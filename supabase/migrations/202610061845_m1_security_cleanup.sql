@@ -1,0 +1,1 @@
+-- M1 security cleanup: remove duplicate project SELECT policy and close internal helper RPC.\ndrop policy if exists projects_scope_select on public.projects;\nrevoke execute on function public.rls_auto_enable() from public,anon,authenticated;\n
