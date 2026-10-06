@@ -1,0 +1,4 @@
+-- Financial posting v1. Applied to Supabase as migration safe_financial_posting_v1.
+-- PAYMENT: Dr Operating Expense / Cr Cash. RECEIPT: Dr Cash / Cr Revenue.
+-- The database function validates authorization, organization ownership and balanced journal lines.
+-- Source-of-truth function body is intentionally kept in Supabase migration history; this repository file documents deployment coupling.
