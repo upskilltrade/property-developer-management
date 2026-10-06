@@ -21,13 +21,13 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
   ]);
   const allProjects = projects ?? [];
   const project = allProjects[0];
-  const [{ data: plots }, { data: units }] = project ? await Promise.all([
+  const [{ data: featuredPlots }, { data: featuredUnits }] = project ? await Promise.all([
     supabase.from("plots").select("id,code,land_area_sqm").eq("project_id",project.id).order("code").limit(100),
     supabase.from("units").select("id,code,name,status,list_price,currency_code").eq("project_id",project.id).order("code").limit(100),
   ]) : [{data:[]},{data:[]}];
   const portfolio = (portfolioRows?.[0] ?? null) as null | {total_projects:number|string|null;total_plots:number|string|null;total_units:number|string|null;available_units:number|string|null;sold_contracted_units:number|string|null;priced_units:number|string|null;listed_value:number|string|null};
-  const projectPlots = plots ?? [];
-  const projectUnits = units ?? [];
+  const projectPlots = featuredPlots ?? [];
+  const projectUnits = featuredUnits ?? [];
   const available = projectUnits.filter(u => u.status === "AVAILABLE").length;
   const totalProjects = Number(portfolio?.total_projects ?? allProjects.length);
   const totalPlots = Number(portfolio?.total_plots ?? 0);
