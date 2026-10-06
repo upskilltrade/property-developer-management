@@ -14,19 +14,30 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/${locale}/login`);
 
-  const [{ data: projects }, { data: profile }] = await Promise.all([
-    supabase.from("projects").select("id,code,name,status,currency_code,target_completion_date,plots(id,code,land_area_sqm),units(id,code,name,status,list_price,currency_code)").order("created_at"),
+  const [{ data: projects }, { data: profile }, { data: portfolioRows }] = await Promise.all([
+    supabase.from("projects").select("id,code,name,status,currency_code,target_completion_date").order("created_at").limit(20),
     supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
+    supabase.rpc("get_portfolio_dashboard"),
   ]);
-
   const allProjects = projects ?? [];
   const project = allProjects[0];
-  const plots = project?.plots ?? [];
-  const units = project?.units ?? [];
-  const available = units.filter(u => u.status === "AVAILABLE").length;
-  const sold = units.filter(u => ["SOLD","TRANSFERRED","CONTRACTED"].includes(u.status)).length;
-  const priced = units.filter(u => u.list_price !== null);
-  const value = priced.reduce((sum,u) => sum + Number(u.list_price ?? 0), 0);
+  const [{ data: featuredPlots }, { data: featuredUnits }] = project ? await Promise.all([
+    supabase.from("plots").select("id,code,land_area_sqm").eq("project_id",project.id).order("code").limit(100),
+    supabase.from("units").select("id,code,name,status,list_price,currency_code").eq("project_id",project.id).order("code").limit(100),
+  ]) : [{data:[]},{data:[]}];
+  const portfolio = (portfolioRows?.[0] ?? null) as null | {total_projects:number|string|null;total_plots:number|string|null;total_units:number|string|null;available_units:number|string|null;sold_contracted_units:number|string|null;priced_units:number|string|null;listed_value:number|string|null};
+  const projectPlots = featuredPlots ?? [];
+  const projectUnits = featuredUnits ?? [];
+  const available = projectUnits.filter(u => u.status === "AVAILABLE").length;
+  const totalProjects = Number(portfolio?.total_projects ?? allProjects.length);
+  const totalPlots = Number(portfolio?.total_plots ?? 0);
+  const totalUnits = Number(portfolio?.total_units ?? 0);
+  const portfolioAvailable = Number(portfolio?.available_units ?? 0);
+  const sold = Number(portfolio?.sold_contracted_units ?? 0);
+  const pricedCount = Number(portfolio?.priced_units ?? 0);
+  const value = Number(portfolio?.listed_value ?? 0);
+  const plots = projectPlots;
+  const units = projectUnits;
   const displayName = profile?.display_name || user.email?.split("@")[0] || (en ? "Developer" : "ผู้พัฒนาโครงการ");
   const fmt = new Intl.NumberFormat(en ? "en-US" : "th-TH", { maximumFractionDigits: 0 });
 
@@ -48,11 +59,11 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
           <div className={styles.heading}><div><p>{en?"PORTFOLIO OVERVIEW":"ภาพรวมพอร์ตโครงการ"}</p><h1>{en?"Good morning":"สวัสดี"}, {displayName}</h1><span>{en?"Here’s what’s happening across your development portfolio.":"ภาพรวมสิ่งที่กำลังเกิดขึ้นในโครงการของคุณ"}</span></div><div className={styles.headingActions}><span>{new Intl.DateTimeFormat(en?"en-GB":"th-TH",{dateStyle:"medium"}).format(new Date())}</span><Link className={styles.newProject} href={`/${locale}/app/projects#new`}>＋ {en?"New Project":"โครงการใหม่"}</Link></div></div>
 
           <div className={styles.metrics}>
-            <article><small>{en?"TOTAL PROJECTS":"โครงการทั้งหมด"}</small><strong>{allProjects.length}</strong><em>{project?.status ?? "—"}</em></article>
-            <article><small>{en?"TOTAL PLOTS":"แปลงทั้งหมด"}</small><strong>{plots.length}</strong><em>{en?"Current project":"โครงการปัจจุบัน"}</em></article>
-            <article><small>{en?"TOTAL UNITS":"ยูนิตทั้งหมด"}</small><strong>{units.length}</strong><em>{available} {en?"available":"ว่าง"}</em></article>
-            <article><small>{en?"SOLD / CONTRACTED":"ขาย / ทำสัญญา"}</small><strong>{sold}</strong><em>{units.length?Math.round(sold/units.length*100):0}%</em></article>
-            <article><small>{en?"LISTED VALUE":"มูลค่าราคาขาย"}</small><strong>{priced.length ? `฿${fmt.format(value)}` : "—"}</strong><em>{priced.length? `${priced.length} priced units` : (en?"Prices not set":"ยังไม่ได้กำหนดราคา")}</em></article>
+            <article><small>{en?"TOTAL PROJECTS":"โครงการทั้งหมด"}</small><strong>{totalProjects}</strong><em>{project?.status ?? "—"}</em></article>
+            <article><small>{en?"TOTAL PLOTS":"แปลงทั้งหมด"}</small><strong>{totalPlots}</strong><em>{en?"Across portfolio":"ทั้งพอร์ต"}</em></article>
+            <article><small>{en?"TOTAL UNITS":"ยูนิตทั้งหมด"}</small><strong>{totalUnits}</strong><em>{portfolioAvailable} {en?"available":"ว่าง"}</em></article>
+            <article><small>{en?"SOLD / CONTRACTED":"ขาย / ทำสัญญา"}</small><strong>{sold}</strong><em>{totalUnits?Math.round(sold/totalUnits*100):0}%</em></article>
+            <article><small>{en?"LISTED VALUE":"มูลค่าราคาขาย"}</small><strong>{pricedCount ? `฿${fmt.format(value)}` : "—"}</strong><em>{pricedCount? `${pricedCount} priced units` : (en?"Prices not set":"ยังไม่ได้กำหนดราคา")}</em></article>
           </div>
 
           <div className={styles.grid}>
