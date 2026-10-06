@@ -1,0 +1,5 @@
+-- WHT-aware settlement: settlement gross = cash amount + WHT.
+-- PAYMENT settlement: Dr AP gross / Cr Bank cash / Cr WHT Payable.
+-- RECEIPT settlement: Dr Bank cash / Dr WHT Receivable / Cr AR gross.
+-- Deployed function: public.post_financial_document(uuid).
+-- See database migration financial_core_v2_wht_settlement for canonical deployed definition.
