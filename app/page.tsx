@@ -1,5 +1,2 @@
-import { redirect } from "next/navigation";
-
-export default function Home() {
-  redirect("/th/login");
-}
+import {redirect} from "next/navigation";
+export default function Home(){redirect("/th/login");}
