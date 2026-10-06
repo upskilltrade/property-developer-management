@@ -14,10 +14,11 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/${locale}/login`);
 
-  const [{ data: projects }, { data: profile }, { data: portfolioRows }] = await Promise.all([
+  const [{ data: projects }, { data: profile }, { data: portfolioRows }, { data: financeRows }] = await Promise.all([
     supabase.from("projects").select("id,code,name,status,currency_code,target_completion_date").order("created_at").limit(20),
     supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
     supabase.rpc("get_portfolio_dashboard"),
+    supabase.from("financial_documents").select("project_id,document_type,amount,status,settled_amount").in("status",["APPROVED","POSTED"]).limit(1000),
   ]);
   const allProjects = projects ?? [];
   const project = allProjects[0];
@@ -40,6 +41,13 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
   const units = projectUnits;
   const displayName = profile?.display_name || user.email?.split("@")[0] || (en ? "Developer" : "ผู้พัฒนาโครงการ");
   const fmt = new Intl.NumberFormat(en ? "en-US" : "th-TH", { maximumFractionDigits: 0 });
+  const finance=financeRows??[];
+  const cashIn=finance.filter(x=>x.document_type==="RECEIPT"&&x.status==="POSTED").reduce((a,x)=>a+Number(x.amount||0),0);
+  const cashOut=finance.filter(x=>x.document_type==="PAYMENT"&&x.status==="POSTED").reduce((a,x)=>a+Number(x.amount||0),0);
+  const committed=finance.filter(x=>x.document_type==="COMMITMENT").reduce((a,x)=>a+Number(x.amount||0),0);
+  const ap=finance.filter(x=>x.document_type==="AP").reduce((a,x)=>a+Math.max(0,Number(x.amount||0)-Number(x.settled_amount||0)),0);
+  const ar=finance.filter(x=>x.document_type==="AR").reduce((a,x)=>a+Math.max(0,Number(x.amount||0)-Number(x.settled_amount||0)),0);
+  const netCash=cashIn-cashOut;
 
   return (
     <main className={styles.shell}>
