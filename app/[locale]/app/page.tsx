@@ -34,7 +34,7 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
     <main className={styles.shell}>
       <aside className={styles.sidebar}>
         <div className={styles.logo}><i>DP</i><div><b>DevPropertyPro</b><small>Build · Manage · Grow</small></div></div>
-        <nav>{nav.map((item,i)=><a className={i===0?styles.active:""} key={item} href={i===0?`/${locale}/app`:i===1?`/${locale}/app/projects`:"#"}><span>{["⌂","▦","◇","⌑","฿","◫","↗","♙","◉","⬡","▤","◌"][i]}</span>{item}</a>)}</nav>
+        <nav>{nav.map((item,i)=><a className={i===0?styles.active:""} key={item} href={i===0?`/${locale}/app`:i===1?`/${locale}/app/projects`:i===8?`/${locale}/app/finance`:"#"}><span>{["⌂","▦","◇","⌑","฿","◫","↗","♙","◉","⬡","▤","◌"][i]}</span>{item}</a>)}</nav>
         <div className={styles.sideFoot}><Link href={`/${locale}/design-system`}>◈ Design System</Link><span>DevPropertyPro v0.1</span></div>
       </aside>
 
