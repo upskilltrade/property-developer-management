@@ -1,0 +1,1 @@
+import styles from "../../../loading.module.css";export default function Loading(){return <main className={styles.page}><div className={styles.wrap}><div className={styles.bar}/><div className={styles.grid}>{Array.from({length:6}).map((_,i)=><div className={styles.card} key={i}/>)}</div><div className={styles.wide}/></div></main>}
