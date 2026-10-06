@@ -14,10 +14,11 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/${locale}/login`);
 
-  const [{ data: projects }, { data: profile }, { data: portfolioRows }] = await Promise.all([
+  const [{ data: projects }, { data: profile }, { data: portfolioRows }, { data: financeRows }] = await Promise.all([
     supabase.from("projects").select("id,code,name,status,currency_code,target_completion_date").order("created_at").limit(20),
     supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
     supabase.rpc("get_portfolio_dashboard"),
+    supabase.from("financial_documents").select("project_id,document_type,amount,status,settled_amount").in("status",["APPROVED","POSTED"]).limit(1000),
   ]);
   const allProjects = projects ?? [];
   const project = allProjects[0];
@@ -40,6 +41,13 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
   const units = projectUnits;
   const displayName = profile?.display_name || user.email?.split("@")[0] || (en ? "Developer" : "ผู้พัฒนาโครงการ");
   const fmt = new Intl.NumberFormat(en ? "en-US" : "th-TH", { maximumFractionDigits: 0 });
+  const finance=financeRows??[];
+  const cashIn=finance.filter(x=>x.document_type==="RECEIPT"&&x.status==="POSTED").reduce((a,x)=>a+Number(x.amount||0),0);
+  const cashOut=finance.filter(x=>x.document_type==="PAYMENT"&&x.status==="POSTED").reduce((a,x)=>a+Number(x.amount||0),0);
+  const committed=finance.filter(x=>x.document_type==="COMMITMENT").reduce((a,x)=>a+Number(x.amount||0),0);
+  const ap=finance.filter(x=>x.document_type==="AP").reduce((a,x)=>a+Math.max(0,Number(x.amount||0)-Number(x.settled_amount||0)),0);
+  const ar=finance.filter(x=>x.document_type==="AR").reduce((a,x)=>a+Math.max(0,Number(x.amount||0)-Number(x.settled_amount||0)),0);
+  const netCash=cashIn-cashOut;
 
   return (
     <main className={styles.shell}>
@@ -58,14 +66,15 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
         <div className={styles.content}>
           <div className={styles.heading}><div><p>{en?"PORTFOLIO OVERVIEW":"ภาพรวมพอร์ตโครงการ"}</p><h1>{en?"Good morning":"สวัสดี"}, {displayName}</h1><span>{en?"Here’s what’s happening across your development portfolio.":"ภาพรวมสิ่งที่กำลังเกิดขึ้นในโครงการของคุณ"}</span></div><div className={styles.headingActions}><span>{new Intl.DateTimeFormat(en?"en-GB":"th-TH",{dateStyle:"medium"}).format(new Date())}</span><Link className={styles.newProject} href={`/${locale}/app/projects#new`}>＋ {en?"New Project":"โครงการใหม่"}</Link></div></div>
 
+          <section className={styles.executiveStrip}><div><small>{en?"EXECUTIVE COMMAND CENTER":"ศูนย์บัญชาการผู้บริหาร"}</small><strong>{en?"Portfolio health at a glance":"สถานะธุรกิจที่ต้องรู้วันนี้"}</strong></div><span className={netCash>=0?styles.healthGood:styles.healthWarn}>{netCash>=0?(en?"CASH POSITION HEALTHY":"สถานะเงินสดปกติ"):(en?"CASH ATTENTION":"ควรตรวจสอบเงินสด")}</span></section>
           <div className={styles.metrics}>
-            <article><small>{en?"TOTAL PROJECTS":"โครงการทั้งหมด"}</small><strong>{totalProjects}</strong><em>{project?.status ?? "—"}</em></article>
-            <article><small>{en?"TOTAL PLOTS":"แปลงทั้งหมด"}</small><strong>{totalPlots}</strong><em>{en?"Across portfolio":"ทั้งพอร์ต"}</em></article>
-            <article><small>{en?"TOTAL UNITS":"ยูนิตทั้งหมด"}</small><strong>{totalUnits}</strong><em>{portfolioAvailable} {en?"available":"ว่าง"}</em></article>
-            <article><small>{en?"SOLD / CONTRACTED":"ขาย / ทำสัญญา"}</small><strong>{sold}</strong><em>{totalUnits?Math.round(sold/totalUnits*100):0}%</em></article>
-            <article><small>{en?"LISTED VALUE":"มูลค่าราคาขาย"}</small><strong>{pricedCount ? `฿${fmt.format(value)}` : "—"}</strong><em>{pricedCount? `${pricedCount} priced units` : (en?"Prices not set":"ยังไม่ได้กำหนดราคา")}</em></article>
+            <article><small>{en?"PORTFOLIO SALES VALUE":"มูลค่าขายรวม"}</small><strong>{pricedCount?`฿${fmt.format(value)}`:"—"}</strong><em>{totalProjects} {en?"projects":"โครงการ"}</em></article>
+            <article><small>{en?"NET CASH MOVEMENT":"กระแสเงินสดสุทธิ"}</small><strong>{`฿${fmt.format(netCash)}`}</strong><em>{en?"Receipts less payments":"รับจริงหักจ่ายจริง"}</em></article>
+            <article><small>{en?"COMMITTED COST":"ภาระผูกพัน"}</small><strong>{`฿${fmt.format(committed)}`}</strong><em>{en?"Approved commitments":"Commitment ที่อนุมัติแล้ว"}</em></article>
+            <article><small>{en?"AP OUTSTANDING":"เจ้าหนี้คงค้าง"}</small><strong>{`฿${fmt.format(ap)}`}</strong><em>{en?"Requires cash planning":"ต้องวางแผนการจ่าย"}</em></article>
+            <article><small>{en?"AR OUTSTANDING":"ลูกหนี้คงค้าง"}</small><strong>{`฿${fmt.format(ar)}`}</strong><em>{en?"Expected collection":"ยอดรอเรียกเก็บ"}</em></article>
           </div>
-
+          <section className={styles.managementRow}><article><small>{en?"CASH CONTROL":"การควบคุมเงินสด"}</small><h3>{en?"Cash movement":"กระแสเงินสด"}</h3><div className={styles.moneyPair}><div><span>{en?"CASH IN":"เงินเข้า"}</span><b>฿{fmt.format(cashIn)}</b></div><div><span>{en?"CASH OUT":"เงินออก"}</span><b>฿{fmt.format(cashOut)}</b></div></div><Link href={`/${locale}/app/finance`}>{en?"Open Finance Center →":"เปิด Finance Center →"}</Link></article><article><small>{en?"PORTFOLIO CONTROL":"การควบคุมพอร์ต"}</small><h3>{en?"Development pipeline":"ภาพรวมโครงการ"}</h3><div className={styles.moneyPair}><div><span>{en?"PROJECTS":"โครงการ"}</span><b>{totalProjects}</b></div><div><span>{en?"UNITS":"ยูนิต"}</span><b>{totalUnits}</b></div></div><Link href={`/${locale}/app/projects`}>{en?"Review projects →":"ดูทุกโครงการ →"}</Link></article><article><small>{en?"MANAGEMENT ATTENTION":"รายการที่ต้องจับตา"}</small><h3>{en?"Decision queue":"สิ่งที่ต้องตัดสินใจ"}</h3><div className={styles.alertLine}><span>{ap>0?"!":"✓"}</span><div><b>{ap>0?(en?"Outstanding payables":"มีเจ้าหนี้คงค้าง"):(en?"No AP pressure":"ไม่มี AP คงค้าง")}</b><small>{ap>0?`฿${fmt.format(ap)}`:(en?"Cash obligations clear":"ภาระเงินสดปกติ")}</small></div></div><div className={styles.alertLine}><span>•</span><div><b>{portfolioAvailable} {en?"units available":"ยูนิตพร้อมขาย"}</b><small>{en?"Inventory requiring sales attention":"Inventory ที่ฝ่ายขายต้องติดตาม"}</small></div></div></article></section>
           <div className={styles.grid}>
             <article className={styles.projectCard}>
               <div className={styles.cardHead}><div><small>{en?"FEATURED PROJECT":"โครงการหลัก"}</small><h2>{project?.name ?? (en?"No project":"ยังไม่มีโครงการ")}</h2><span>{project?.code ?? "—"}</span></div><span className={styles.status}>{project?.status ?? "—"}</span></div>
