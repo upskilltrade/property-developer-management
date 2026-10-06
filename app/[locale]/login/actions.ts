@@ -10,7 +10,7 @@ export async function login(formData: FormData) {
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) redirect(`/${locale}/login?error=invalid`);
-  redirect(`/${locale}/app`);
+  redirect(`/${locale}/workspace`);
 }
 
 export async function logout(formData: FormData) {

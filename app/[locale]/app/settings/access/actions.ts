@@ -1,0 +1,5 @@
+"use server";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+async function ownerContext(){const s=await createClient();const {data:{user}}=await s.auth.getUser();if(!user)return null;const {data}=await s.rpc("current_access_profile");const owner=(data??[]).find((x:any)=>x.role_code==="OWNER"&&x.scope_type==="ORGANIZATION");return owner?{s,org:owner.organization_id}:null}
+export async function assignAccess(fd:FormData){const locale=fd.get("locale")==="en"?"en":"th";const c=await ownerContext();if(!c)redirect(`/${locale}/app/access-denied`);const membership=String(fd.get("membership_id")||"");const role=String(fd.get("role_id")||"");const scope=String(fd.get("scope_type")||"PROJECT");const scopeId=scope==="ORGANIZATION"?null:String(fd.get("scope_id")||"");const {error}=await c.s.from("membership_roles").insert({membership_id:membership,role_id:role,scope_type:scope,scope_id:scopeId});redirect(`/${locale}/app/settings/access?${error?"error=assign":"saved=1"}`)}
