@@ -119,3 +119,17 @@ export async function saveSale(fd: FormData) {
     .eq("project_id", projectId);
   done(unitError, "sale");
 }
+
+export async function linkCustomerAccount(fd: FormData) {
+  const { supabase, back, done } = await context(fd);
+  const customerId = str(fd, "customer_id");
+  const email = str(fd, "email");
+  if (!customerId || !email) redirect(withFlash(back, "error", "invalid"));
+  const { error } = await supabase.rpc("link_customer_account", {
+    target_customer: customerId,
+    account_email: email,
+  });
+  if (error?.message.includes("No account")) redirect(withFlash(back, "error", "noAccount"));
+  if (error?.message.includes("Not authorized")) redirect(withFlash(back, "error", "permission"));
+  done(error, "link");
+}

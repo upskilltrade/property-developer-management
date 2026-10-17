@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   ArrowUpRight,
   Building2,
+  CalendarCheck,
   CircleDollarSign,
   FileClock,
   Home,
@@ -27,8 +28,18 @@ import { DetailList, Panel } from "@/components/ui/panel";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Progress } from "@/components/ui/progress";
 import { ButtonLink } from "@/components/ui/button";
 import { countBy, InventoryBar, InventoryLegend } from "@/components/domain/inventory-bar";
+import {
+  activityColumns,
+  activityName,
+  daysBetween,
+  scheduleState,
+  todayIso,
+  weightedProgress,
+  type Activity,
+} from "@/lib/schedule";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -52,13 +63,14 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
     { data: finance },
     { data: openDocs },
     { data: openContracts },
+    { data: scheduleRows },
   ] = await Promise.all([
     supabase
       .from("projects")
       .select("id,code,name,status,currency_code,target_completion_date")
       .order("code"),
     supabase.rpc("get_portfolio_dashboard"),
-    supabase.from("units").select("id,project_id,status,list_price").limit(5000),
+    supabase.from("units").select("id,code,project_id,status,list_price").limit(5000),
     supabase
       .from("financial_documents")
       .select("project_id,document_type,amount,status,settled_amount")
@@ -75,6 +87,7 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
       .select("id,project_id,contract_no,vendor_name,amount,status")
       .eq("status", "DRAFT")
       .limit(50),
+    supabase.from("schedule_activities").select(activityColumns).limit(5000),
   ]);
 
   const allUnits = units ?? [];
@@ -127,6 +140,38 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
       value: pu.reduce((a, u) => a + toNumber(u.list_price), 0),
     };
   });
+
+  // Construction: verified progress per project (units weighted equally), late activities and
+  // milestones due in the next 14 days.
+  const today = todayIso();
+  const acts = (scheduleRows ?? []) as Activity[];
+  const construction = (projects ?? [])
+    .map((p) => {
+      const pa = acts.filter((a) => a.project_id === p.id);
+      const unitIds = [...new Set(pa.map((a) => a.unit_id).filter(Boolean))] as string[];
+      const progress = unitIds.length
+        ? unitIds.reduce(
+            (sum, uid) =>
+              sum + weightedProgress(pa.filter((a) => a.unit_id === uid && !a.is_milestone)),
+            0,
+          ) / unitIds.length
+        : 0;
+      const late = pa.filter((a) => {
+        const st = scheduleState(a, today);
+        return !st.done && (st.late || st.overdue);
+      }).length;
+      return { ...p, units: unitIds.length, progress, late };
+    })
+    .filter((p) => p.units);
+  const unitCodeById = new Map(allUnits.map((u) => [u.id, u.code]));
+  const milestones = acts
+    .filter((a) => {
+      if (!a.is_milestone || scheduleState(a, today).done) return false;
+      const d = daysBetween(today, a.forecast_finish);
+      return d != null && d >= 0 && d <= 14;
+    })
+    .sort((a, b) => (a.forecast_finish ?? "").localeCompare(b.forecast_finish ?? ""))
+    .slice(0, 8);
 
   return (
     <>
@@ -326,6 +371,77 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
             <InventoryLegend counts={countBy(allUnits, (u) => u.status)} labels={t.status.unit} />
           </Panel>
         </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_340px]">
+        <Panel title={t.dashboard.construction} description={t.dashboard.constructionHint}>
+          {construction.length ? (
+            <Table>
+              <THead>
+                <tr>
+                  <TH>{t.projects.title}</TH>
+                  <TH align="right">{t.dashboard.kpi.units}</TH>
+                  <TH className="w-56">{t.dashboard.avgProgress}</TH>
+                  <TH align="right">{t.dashboard.lateActivities}</TH>
+                </tr>
+              </THead>
+              <tbody>
+                {construction.map((p) => (
+                  <TR key={p.id}>
+                    <TD>
+                      <Link
+                        href={`${base}/projects/${p.id}/schedule`}
+                        className="font-medium hover:text-brand hover:underline"
+                      >
+                        {p.name}
+                      </Link>
+                      <p className="font-mono text-[10px] text-faint">{p.code}</p>
+                    </TD>
+                    <TD align="right" className="num">
+                      {p.units}
+                    </TD>
+                    <TD>
+                      <Progress value={p.progress} />
+                    </TD>
+                    <TD
+                      align="right"
+                      className={p.late ? "font-semibold text-red-700 num" : "text-faint num"}
+                    >
+                      {p.late || "—"}
+                    </TD>
+                  </TR>
+                ))}
+              </tbody>
+            </Table>
+          ) : (
+            <EmptyState icon={<Building2 />} title={t.dashboard.noSchedules} />
+          )}
+        </Panel>
+        <Panel title={t.dashboard.nextMilestones}>
+          {milestones.length ? (
+            <ul className="divide-y divide-line">
+              {milestones.map((m) => (
+                <li
+                  key={m.id}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 text-[13px]"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">
+                      {projectById.get(m.project_id)?.code} ·{" "}
+                      {m.unit_id ? (unitCodeById.get(m.unit_id) ?? "") : ""}
+                    </p>
+                    <p className="truncate text-2xs text-muted">◆ {activityName(m, locale)}</p>
+                  </div>
+                  <span className="shrink-0 text-2xs text-muted">
+                    {formatDate(locale, m.forecast_finish)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState icon={<CalendarCheck />} title={t.dashboard.noMilestones} />
+          )}
+        </Panel>
       </div>
     </>
   );

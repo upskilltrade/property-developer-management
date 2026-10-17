@@ -14,7 +14,7 @@ import { Sheet, SheetFooter } from "@/components/ui/sheet";
 import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { cn } from "@/components/ui/cn";
-import { saveConstruction, saveFinancials, saveSale } from "./actions";
+import { linkCustomerAccount, saveConstruction, saveFinancials, saveSale } from "./actions";
 
 type One<T> = T | T[] | null | undefined;
 const one = <T,>(v: One<T>): T | undefined => (Array.isArray(v) ? v[0] : (v ?? undefined));
@@ -26,12 +26,12 @@ export default async function Unit360({
 }) {
   const { locale, t } = await resolveLocale(params);
   const { id, unitId } = await params;
-  const { supabase } = await getSession(locale);
+  const { supabase, ownerOrganizationId } = await getSession(locale);
 
   const { data: u } = await supabase
     .from("units")
     .select(
-      "id,code,name,status,list_price,target_completion_date,project_id,plots(code,land_area_sqm),house_types(code,name,bedrooms,bathrooms,gross_floor_area_sqm),unit_construction(*),unit_financials(*),unit_sales(*,customers(full_name,phone,email))",
+      "id,code,name,status,list_price,target_completion_date,project_id,plots(code,land_area_sqm),house_types(code,name,bedrooms,bathrooms,gross_floor_area_sqm),unit_construction(*),unit_financials(*),unit_sales(*,customers(id,full_name,phone,email,primary_profile_id))",
     )
     .eq("id", unitId)
     .eq("project_id", id)
@@ -195,11 +195,43 @@ export default async function Unit360({
               {
                 label: t.unit.customer,
                 value: customer ? (
-                  <div>
+                  <div className="space-y-1">
                     <p>{customer.full_name}</p>
                     <p className="text-2xs font-normal text-muted">
                       {[customer.phone, customer.email].filter(Boolean).join(" · ") || "—"}
                     </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={customer.primary_profile_id ? "success" : "neutral"}>
+                        {customer.primary_profile_id
+                          ? t.unit.accountLinked
+                          : t.unit.accountNotLinked}
+                      </Badge>
+                      {ownerOrganizationId ? (
+                        <Sheet
+                          title={t.unit.linkAccount}
+                          description={t.unit.linkHint}
+                          triggerLabel={t.unit.linkAccount}
+                          triggerVariant="ghost"
+                          triggerSize="xs"
+                        >
+                          <form action={linkCustomerAccount} className="space-y-3">
+                            {hidden}
+                            <input type="hidden" name="customer_id" value={customer.id} />
+                            <Field label={t.unit.accountEmail} required>
+                              <Input
+                                name="email"
+                                type="email"
+                                required
+                                defaultValue={customer.email ?? ""}
+                              />
+                            </Field>
+                            <SheetFooter>
+                              <SubmitButton>{t.unit.linkAccount}</SubmitButton>
+                            </SheetFooter>
+                          </form>
+                        </Sheet>
+                      ) : null}
+                    </div>
                   </div>
                 ) : (
                   <span className="font-normal text-faint">{t.unit.noCustomer}</span>

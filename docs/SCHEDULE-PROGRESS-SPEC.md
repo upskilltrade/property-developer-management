@@ -1,6 +1,6 @@
 # Schedule & Progress — Feature Spec
 
-**Status:** Steps 1–4 implemented (data model, house schedule with report/verify/publish and photos, progress matrix, project Gantt, photo log). Step 5 (dashboard additions, customer portal view) not yet.
+**Status:** Implemented (steps 1–5). Customer portal shows published progress and photos; external roles no longer read internal project data.
 **Depends on:** DATA-MODEL.md §10, BUSINESS-PROCESS-MAP.md Process 18–19, MVP-ROADMAP.md Release 4
 **Pilot:** Project 001 — 5 houses
 
