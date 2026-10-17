@@ -30,10 +30,12 @@ import { cn } from "@/components/ui/cn";
 import { Gantt } from "@/components/domain/gantt";
 import { ReportProgressForm } from "@/components/domain/report-progress-form";
 import { PhotoThumb } from "@/components/domain/photo-thumb";
+import { AiPhotoReview, type PhotoReviewRow } from "@/components/domain/ai-photo-review";
 import {
   applyScheduleTemplate,
   publishProgress,
   reportProgress,
+  reviewPhotosWithAi,
   updateForecast,
   verifyProgress,
 } from "../../../schedule/actions";
@@ -101,6 +103,7 @@ export default async function UnitSchedule({
     { data: templates },
     { data: canApprove },
     { data: canReport },
+    { data: reviewRows },
   ] = await Promise.all([
     supabase
       .from("schedule_activities")
@@ -131,7 +134,19 @@ export default async function UnitSchedule({
       .order("code"),
     supabase.rpc("can_schedule", { target_project: id, target_action: "APPROVE" }),
     supabase.rpc("can_report_progress", { target_project: id }),
+    supabase
+      .from("ai_photo_reviews")
+      .select(
+        "progress_update_id,verdict,estimated_percent,summary_th,summary_en,concerns,photo_count,created_at",
+      )
+      .eq("project_id", id)
+      .order("created_at", { ascending: false })
+      .limit(300),
   ]);
+  // Latest AI review per progress update.
+  const reviewByUpdate = new Map<string, PhotoReviewRow>();
+  for (const r of (reviewRows ?? []) as (PhotoReviewRow & { progress_update_id: string })[])
+    if (!reviewByUpdate.has(r.progress_update_id)) reviewByUpdate.set(r.progress_update_id, r);
 
   const acts = (actRows ?? []) as Activity[];
   const updates = (updateRows ?? []) as unknown as Update[];
@@ -377,6 +392,16 @@ export default async function UnitSchedule({
                                 <p className="col-span-full text-2xs text-muted">{s.noPhotos}</p>
                               ) : null}
                             </div>
+                            {pendingPhotos.length || reviewByUpdate.has(pending.id) ? (
+                              <AiPhotoReview
+                                locale={locale}
+                                review={reviewByUpdate.get(pending.id) ?? null}
+                                labels={t.aiReview}
+                                action={reviewPhotosWithAi}
+                                hidden={{ ...hidden, update_id: pending.id, return_to: base }}
+                                canRun={canApprove === true && pendingPhotos.length > 0}
+                              />
+                            ) : null}
                             {pending.reported_by === user.id ? (
                               <p className="rounded-md bg-amber-50 px-3 py-2 text-2xs text-amber-900">
                                 {s.ownReport}
