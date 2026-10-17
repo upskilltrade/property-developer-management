@@ -118,6 +118,10 @@ export default async function AppLayout({
               selfApproveVo: t.flash.selfApproveVo,
               paymentCondition: t.flash.paymentCondition,
               drawingNotReleased: t.flash.drawingNotReleased,
+              budgetLocked: t.flash.budgetLocked,
+              selfApproveProc: t.flash.selfApproveProc,
+              aboveLimit: t.flash.aboveLimit,
+              procState: t.flash.procState,
             },
           }}
         />
