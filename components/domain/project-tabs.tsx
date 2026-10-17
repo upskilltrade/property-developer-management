@@ -13,13 +13,14 @@ export function ProjectTabs({
     schedule: string;
     photos: string;
     design: string;
+    site: string;
     setup: string;
     finance: string;
   };
 }) {
   const pathname = usePathname();
   const section = pathname.slice(base.length).split("/")[1] ?? "";
-  const active = ["schedule", "photos", "design", "setup", "finance"].includes(section)
+  const active = ["schedule", "photos", "design", "site", "setup", "finance"].includes(section)
     ? section
     : "overview";
   return (
@@ -30,6 +31,7 @@ export function ProjectTabs({
         { key: "schedule", label: labels.schedule, href: `${base}/schedule` },
         { key: "photos", label: labels.photos, href: `${base}/photos` },
         { key: "design", label: labels.design, href: `${base}/design` },
+        { key: "site", label: labels.site, href: `${base}/site` },
         { key: "setup", label: labels.setup, href: `${base}/setup` },
         { key: "finance", label: labels.finance, href: `${base}/finance` },
       ]}
