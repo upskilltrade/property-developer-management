@@ -86,6 +86,7 @@ export default async function AppLayout({
               selfVerify: t.flash.selfVerify,
               photosRequired: t.flash.photosRequired,
               hasSchedule: t.flash.hasSchedule,
+              noAccount: t.flash.noAccount,
             },
           }}
         />
