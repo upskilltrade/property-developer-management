@@ -1,4 +1,4 @@
-import { FileText } from "lucide-react";
+import { FileText, Lock } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -92,6 +92,9 @@ export default async function ProjectFinance({
   const { supabase } = await getSession(locale);
   const base = `/${locale}/app/projects/${id}/finance`;
   const f = t.finance.fields;
+
+  const { data: canFinance } = await supabase.rpc("can_view_finance", { target_project: id });
+  if (canFinance !== true) return <EmptyState icon={<Lock />} title={t.control.restricted} />;
 
   const [
     { data: budgets },

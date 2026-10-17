@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "./cn";
 
@@ -32,21 +33,31 @@ export function Kpi({
   sub,
   tone = "default",
   icon,
+  href,
 }: {
   label: ReactNode;
   value: ReactNode;
   sub?: ReactNode;
   tone?: Tone;
   icon?: ReactNode;
+  /** Makes the tile a link to the records behind the number. */
+  href?: string;
 }) {
-  return (
-    <div className="bg-surface px-4 py-3">
+  const body = (
+    <>
       <div className="flex items-center justify-between gap-2 text-2xs font-medium tracking-wide text-muted uppercase">
         <span className="truncate">{label}</span>
         {icon ? <span className="text-faint [&_svg]:size-3.5">{icon}</span> : null}
       </div>
       <div className={cn("mt-1 truncate text-lg font-semibold num", valueTone[tone])}>{value}</div>
       {sub ? <div className="mt-0.5 truncate text-2xs text-muted">{sub}</div> : null}
-    </div>
+    </>
+  );
+  return href ? (
+    <Link href={href} className="block bg-surface px-4 py-3 transition-colors hover:bg-subtle">
+      {body}
+    </Link>
+  ) : (
+    <div className="bg-surface px-4 py-3">{body}</div>
   );
 }

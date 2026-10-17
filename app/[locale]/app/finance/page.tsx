@@ -24,7 +24,13 @@ export default async function FinanceCenter({ params }: { params: Promise<{ loca
     .from("projects")
     .select("id,code,name,status,currency_code")
     .order("code");
-  const ids = (projects ?? []).map((p) => p.id);
+  // Only projects whose finance this person may see.
+  const visible = await Promise.all(
+    (projects ?? []).map((p) =>
+      supabase.rpc("can_view_finance", { target_project: p.id }).then((r) => r.data === true),
+    ),
+  );
+  const ids = (projects ?? []).filter((_, i) => visible[i]).map((p) => p.id);
   const [{ data: budgets }, { data: docs }] = ids.length
     ? await Promise.all([
         supabase
@@ -40,34 +46,36 @@ export default async function FinanceCenter({ params }: { params: Promise<{ loca
       ])
     : [{ data: [] }, { data: [] }];
 
-  const rows = (projects ?? []).map((p) => {
-    const b = (budgets ?? []).filter((x) => x.project_id === p.id);
-    const d = (docs ?? []).filter((x) => x.project_id === p.id);
-    const posted = d.filter((x) => x.status === "POSTED");
-    const sum = (list: typeof d, type: string, open = false) =>
-      list
-        .filter((x) => x.document_type === type)
-        .reduce(
-          (n, x) =>
-            n +
-            (open
-              ? Math.max(0, toNumber(x.amount) - toNumber(x.settled_amount))
-              : toNumber(x.amount)),
-          0,
-        );
-    const approved = d.filter((x) => ["APPROVED", "POSTED"].includes(x.status));
-    return {
-      ...p,
-      budget: b.reduce((n, x) => n + toNumber(x.budget_amount), 0),
-      forecast: b.reduce((n, x) => n + toNumber(x.forecast_amount), 0),
-      committed: sum(approved, "COMMITMENT"),
-      cashIn: sum(posted, "RECEIPT"),
-      cashOut: sum(posted, "PAYMENT"),
-      ar: sum(approved, "AR", true),
-      ap: sum(approved, "AP", true),
-      drafts: d.filter((x) => x.status === "DRAFT").length,
-    };
-  });
+  const rows = (projects ?? [])
+    .filter((p) => ids.includes(p.id))
+    .map((p) => {
+      const b = (budgets ?? []).filter((x) => x.project_id === p.id);
+      const d = (docs ?? []).filter((x) => x.project_id === p.id);
+      const posted = d.filter((x) => x.status === "POSTED");
+      const sum = (list: typeof d, type: string, open = false) =>
+        list
+          .filter((x) => x.document_type === type)
+          .reduce(
+            (n, x) =>
+              n +
+              (open
+                ? Math.max(0, toNumber(x.amount) - toNumber(x.settled_amount))
+                : toNumber(x.amount)),
+            0,
+          );
+      const approved = d.filter((x) => ["APPROVED", "POSTED"].includes(x.status));
+      return {
+        ...p,
+        budget: b.reduce((n, x) => n + toNumber(x.budget_amount), 0),
+        forecast: b.reduce((n, x) => n + toNumber(x.forecast_amount), 0),
+        committed: sum(approved, "COMMITMENT"),
+        cashIn: sum(posted, "RECEIPT"),
+        cashOut: sum(posted, "PAYMENT"),
+        ar: sum(approved, "AR", true),
+        ap: sum(approved, "AP", true),
+        drafts: d.filter((x) => x.status === "DRAFT").length,
+      };
+    });
   type Key = "budget" | "forecast" | "committed" | "cashIn" | "cashOut" | "ar" | "ap";
   const total = (k: Key) => rows.reduce((n, r) => n + r[k], 0);
   const net = total("cashIn") - total("cashOut");

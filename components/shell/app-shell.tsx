@@ -16,6 +16,7 @@ import {
   LogOut,
   Menu,
   PieChart,
+  Radar,
   Search,
   Settings2,
   ShieldCheck,
@@ -28,6 +29,7 @@ import { cn } from "@/components/ui/cn";
 
 const icons = {
   dashboard: LayoutDashboard,
+  control: Radar,
   projects: Building2,
   finance: Landmark,
   sales: Handshake,

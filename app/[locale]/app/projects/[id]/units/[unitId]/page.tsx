@@ -14,6 +14,8 @@ import { Sheet, SheetFooter } from "@/components/ui/sheet";
 import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { cn } from "@/components/ui/cn";
+import { Unit360Panel, type Unit360Data } from "@/components/domain/unit-360";
+import { timelineColumns, type TimelineEvent } from "@/lib/control";
 import { linkCustomerAccount, saveConstruction, saveFinancials, saveSale } from "./actions";
 
 type One<T> = T | T[] | null | undefined;
@@ -38,10 +40,93 @@ export default async function Unit360({
     .maybeSingle();
   if (!u) notFound();
   // With a schedule, construction progress is derived from verified activities, not typed in.
-  const { count: scheduleCount } = await supabase
-    .from("schedule_activities")
-    .select("id", { count: "exact", head: true })
-    .eq("unit_id", unitId);
+  const [
+    { count: scheduleCount },
+    { data: canFinance },
+    { data: contract },
+    { data: pays },
+    { data: selections },
+    { data: vos },
+    { data: defects },
+    { count: rfisOpen },
+    { data: handover },
+    { count: warranties },
+    { count: serviceOpen },
+    { data: events },
+  ] = await Promise.all([
+    supabase
+      .from("schedule_activities")
+      .select("id", { count: "exact", head: true })
+      .eq("unit_id", unitId),
+    supabase.rpc("can_view_finance", { target_project: id }),
+    supabase
+      .from("sales_contracts")
+      .select("id,contract_no,status")
+      .eq("unit_id", unitId)
+      .neq("status", "CANCELLED")
+      .maybeSingle(),
+    supabase
+      .from("payment_schedule_status")
+      .select("amount,paid_amount,outstanding,payment_status")
+      .eq("unit_id", unitId)
+      .eq("status", "ACTIVE"),
+    supabase.from("material_selections").select("status").eq("unit_id", unitId),
+    supabase.from("variation_orders").select("status").eq("unit_id", unitId),
+    supabase.from("defects").select("severity").eq("unit_id", unitId).neq("status", "VERIFIED"),
+    supabase
+      .from("rfis")
+      .select("id", { count: "exact", head: true })
+      .eq("unit_id", unitId)
+      .neq("status", "CLOSED"),
+    supabase.from("unit_handovers").select("status").eq("unit_id", unitId).maybeSingle(),
+    supabase
+      .from("unit_warranties")
+      .select("id", { count: "exact", head: true })
+      .eq("unit_id", unitId)
+      .gte("end_date", new Date().toISOString().slice(0, 10)),
+    supabase
+      .from("service_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("unit_id", unitId)
+      .in("status", ["OPEN", "ASSIGNED", "RESOLVED"]),
+    supabase
+      .from("timeline_events")
+      .select(timelineColumns)
+      .eq("unit_id", unitId)
+      .order("created_at", { ascending: false })
+      .limit(15),
+  ]);
+  // Unit cost figures are finance data; only finance / cost viewers see them.
+  const showCost = canFinance === true;
+  const sumOf = (rows: Record<string, unknown>[] | null, k: string) =>
+    (rows ?? []).reduce((a, r) => a + toNumber(r[k]), 0);
+  const view360: Unit360Data = {
+    contract: contract
+      ? { id: contract.id, no: contract.contract_no, status: contract.status }
+      : null,
+    scheduled: sumOf(pays, "amount"),
+    collected: sumOf(pays, "paid_amount"),
+    overdue: sumOf(
+      (pays ?? []).filter((p) => p.payment_status === "OVERDUE"),
+      "outstanding",
+    ),
+    selectionsPending: (selections ?? []).filter((x) => x.status === "PUBLISHED").length,
+    selectionsApproved: (selections ?? []).filter((x) => x.status === "APPROVED").length,
+    voOpen: (vos ?? []).filter(
+      (v) => !["CLOSED", "CANCELLED", "CUSTOMER_REJECTED"].includes(v.status),
+    ).length,
+    voOffered: (vos ?? []).filter((v) => v.status === "OFFERED").length,
+    voApproved: (vos ?? []).filter((v) =>
+      ["CUSTOMER_APPROVED", "RELEASED", "CLOSED"].includes(v.status),
+    ).length,
+    defectsOpen: (defects ?? []).length,
+    defectsHigh: (defects ?? []).filter((d) => d.severity === "HIGH").length,
+    rfisOpen: rfisOpen ?? 0,
+    handover: handover?.status ?? null,
+    warranties: warranties ?? 0,
+    serviceOpen: serviceOpen ?? 0,
+    events: (events ?? []) as TimelineEvent[],
+  };
 
   const plot = one(u.plots);
   const houseType = one(u.house_types);
@@ -108,19 +193,51 @@ export default async function Unit360({
           value={`${Math.round(progress)}%`}
           sub={con?.stage ? label(t.status.stage, con.stage) : undefined}
         />
-        <Kpi
-          label={t.unit.fields.actual}
-          value={formatMoney(locale, actual)}
-          sub={`${t.unit.fields.budget} ${formatMoney(locale, budget)}`}
-        />
-        <Kpi
-          label={
-            variance != null && variance < 0 ? t.unit.fields.overBudget : t.unit.fields.variance
-          }
-          value={variance != null ? formatMoney(locale, Math.abs(variance)) : "—"}
-          tone={variance == null ? "default" : variance < 0 ? "negative" : "positive"}
-        />
+        {showCost ? (
+          <Kpi
+            label={t.unit.fields.actual}
+            value={formatMoney(locale, actual)}
+            sub={`${t.unit.fields.budget} ${formatMoney(locale, budget)}`}
+          />
+        ) : (
+          <Kpi
+            label={t.unit360.payments}
+            value={formatMoney(locale, view360.collected)}
+            sub={
+              view360.scheduled
+                ? `${t.unit360.collected} / ${formatMoney(locale, view360.scheduled)}`
+                : undefined
+            }
+          />
+        )}
+        {showCost ? (
+          <Kpi
+            label={
+              variance != null && variance < 0 ? t.unit.fields.overBudget : t.unit.fields.variance
+            }
+            value={variance != null ? formatMoney(locale, Math.abs(variance)) : "—"}
+            tone={variance == null ? "default" : variance < 0 ? "negative" : "positive"}
+          />
+        ) : (
+          <Kpi
+            label={t.unit360.overdue}
+            value={view360.overdue ? formatMoney(locale, view360.overdue) : "—"}
+            tone={view360.overdue ? "negative" : "default"}
+          />
+        )}
       </KpiStrip>
+
+      <section>
+        <h3 className="mb-2 text-[13px] font-semibold">{t.unit360.title}</h3>
+        <Unit360Panel
+          t={t}
+          locale={locale}
+          projectId={id}
+          unitId={unitId}
+          unitCode={u.code}
+          data={view360}
+        />
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
         <Panel
@@ -362,96 +479,98 @@ export default async function Unit360({
           />
         </Panel>
 
-        <Panel
-          title={t.unit.cost}
-          actions={
-            <Sheet
-              title={t.unit.editCost}
-              triggerLabel={t.common.edit}
-              triggerIcon={editIcon}
-              triggerVariant="ghost"
-              triggerSize="xs"
-            >
-              <form action={saveFinancials} className="space-y-3">
-                {hidden}
-                <Field label={`${t.unit.fields.budget} (THB)`}>
-                  <Input
-                    name="budget_amount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    defaultValue={fin?.budget_amount ?? ""}
-                  />
-                </Field>
-                <Field label={`${t.unit.fields.committed} (THB)`}>
-                  <Input
-                    name="committed_amount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    defaultValue={fin?.committed_amount ?? ""}
-                  />
-                </Field>
-                <Field label={`${t.unit.fields.actual} (THB)`}>
-                  <Input
-                    name="actual_cost"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    defaultValue={fin?.actual_cost ?? ""}
-                  />
-                </Field>
-                <SheetFooter>
-                  <SubmitButton>{t.common.save}</SubmitButton>
-                </SheetFooter>
-              </form>
-            </Sheet>
-          }
-        >
-          <div className="space-y-2.5 border-b border-line px-4 py-3">
-            {[
-              { k: t.unit.fields.committed, v: committed, c: "bg-sky-500" },
-              {
-                k: t.unit.fields.actual,
-                v: actual,
-                c: budget && actual > budget ? "bg-red-500" : "bg-brand",
-              },
-            ].map((row) => (
-              <div key={row.k}>
-                <div className="mb-1 flex justify-between text-2xs">
-                  <span className="text-muted">{row.k}</span>
-                  <span className="font-medium num">
-                    {budget ? `${Math.round((row.v / budget) * 100)}%` : "—"}
-                  </span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
-                  <div
-                    className={cn("h-full rounded-full", row.c)}
-                    style={{ width: `${budget ? Math.min(100, (row.v / budget) * 100) : 0}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-          <DetailList
-            items={[
-              { label: t.unit.fields.budget, value: formatMoney(locale, budget) },
-              { label: t.unit.fields.committed, value: formatMoney(locale, committed) },
-              { label: t.unit.fields.actual, value: formatMoney(locale, actual) },
-              {
-                label: t.unit.fields.variance,
-                value:
-                  variance != null ? (
-                    <span className={cn(variance < 0 ? "text-red-700" : "text-emerald-700")}>
-                      {formatMoney(locale, variance)}
+        {showCost ? (
+          <Panel
+            title={t.unit.cost}
+            actions={
+              <Sheet
+                title={t.unit.editCost}
+                triggerLabel={t.common.edit}
+                triggerIcon={editIcon}
+                triggerVariant="ghost"
+                triggerSize="xs"
+              >
+                <form action={saveFinancials} className="space-y-3">
+                  {hidden}
+                  <Field label={`${t.unit.fields.budget} (THB)`}>
+                    <Input
+                      name="budget_amount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      defaultValue={fin?.budget_amount ?? ""}
+                    />
+                  </Field>
+                  <Field label={`${t.unit.fields.committed} (THB)`}>
+                    <Input
+                      name="committed_amount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      defaultValue={fin?.committed_amount ?? ""}
+                    />
+                  </Field>
+                  <Field label={`${t.unit.fields.actual} (THB)`}>
+                    <Input
+                      name="actual_cost"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      defaultValue={fin?.actual_cost ?? ""}
+                    />
+                  </Field>
+                  <SheetFooter>
+                    <SubmitButton>{t.common.save}</SubmitButton>
+                  </SheetFooter>
+                </form>
+              </Sheet>
+            }
+          >
+            <div className="space-y-2.5 border-b border-line px-4 py-3">
+              {[
+                { k: t.unit.fields.committed, v: committed, c: "bg-sky-500" },
+                {
+                  k: t.unit.fields.actual,
+                  v: actual,
+                  c: budget && actual > budget ? "bg-red-500" : "bg-brand",
+                },
+              ].map((row) => (
+                <div key={row.k}>
+                  <div className="mb-1 flex justify-between text-2xs">
+                    <span className="text-muted">{row.k}</span>
+                    <span className="font-medium num">
+                      {budget ? `${Math.round((row.v / budget) * 100)}%` : "—"}
                     </span>
-                  ) : (
-                    "—"
-                  ),
-              },
-            ]}
-          />
-        </Panel>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className={cn("h-full rounded-full", row.c)}
+                      style={{ width: `${budget ? Math.min(100, (row.v / budget) * 100) : 0}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <DetailList
+              items={[
+                { label: t.unit.fields.budget, value: formatMoney(locale, budget) },
+                { label: t.unit.fields.committed, value: formatMoney(locale, committed) },
+                { label: t.unit.fields.actual, value: formatMoney(locale, actual) },
+                {
+                  label: t.unit.fields.variance,
+                  value:
+                    variance != null ? (
+                      <span className={cn(variance < 0 ? "text-red-700" : "text-emerald-700")}>
+                        {formatMoney(locale, variance)}
+                      </span>
+                    ) : (
+                      "—"
+                    ),
+                },
+              ]}
+            />
+          </Panel>
+        ) : null}
 
         <Panel title={t.unit.property}>
           <DetailList
