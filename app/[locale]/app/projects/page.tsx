@@ -1,41 +1,189 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { createProject, updateProject } from "./actions";
-import styles from "./projects.module.css";
+import { Building2, Search } from "lucide-react";
+import { getSession } from "@/lib/auth";
+import { resolveLocale } from "@/lib/i18n";
+import { label } from "@/lib/i18n/label";
+import { formatDate, formatMoney, formatNumber, toNumber } from "@/lib/format";
+import { projectStatuses, soldStatuses, toneOf } from "@/lib/status";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { Table, TD, TFoot, TH, THead, TR } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Sheet } from "@/components/ui/sheet";
+import { Input, Select } from "@/components/ui/field";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { countBy, InventoryBar } from "@/components/domain/inventory-bar";
+import { ProjectForm } from "@/components/domain/project-form";
+import { createProject } from "./actions";
 
-export default async function ProjectsPage({params,searchParams}:{params:Promise<{locale:string}>,searchParams:Promise<Record<string,string|undefined>>}) {
- const {locale:raw}=await params; const locale=raw==="en"?"en":"th"; const en=locale==="en"; const query=await searchParams;
- const supabase=await createClient(); const {data:{user}}=await supabase.auth.getUser(); if(!user) redirect(`/${locale}/login`);
- const {data:projects}=await supabase.from("projects").select("id,code,name,status,currency_code,target_completion_date,plots(id),units(id,status,list_price)").order("created_at");
- const rows=projects??[];
- return <main className={styles.page}>
-   <header className={styles.top}><div><Link href={`/${locale}/app`}>← {en?"Dashboard":"แดชบอร์ด"}</Link><p>DEVPROPERTYPRO · PROJECTS</p><h1>{en?"Projects":"โครงการ"}</h1><span>{en?"Create and manage every development from one workspace.":"สร้างและบริหารทุกโครงการจาก Workspace เดียว"}</span></div><a className={styles.newButton} href="#new">＋ {en?"New Project":"สร้างโครงการ"}</a></header>
-   {(query.created||query.updated)&&<div className={styles.success}>✓ {query.created?(en?"Project created successfully":"สร้างโครงการเรียบร้อย"):(en?"Project updated successfully":"บันทึกการแก้ไขแล้ว")}</div>}
-   {query.error&&<div className={styles.error}>! {en?"The action could not be completed. Check your permission or data.":"ดำเนินการไม่สำเร็จ กรุณาตรวจสอบข้อมูลหรือสิทธิ์ของบัญชี"}</div>}
-   <section className={styles.stats}><article><small>{en?"TOTAL PROJECTS":"โครงการทั้งหมด"}</small><b>{rows.length}</b></article><article><small>{en?"ACTIVE":"กำลังดำเนินการ"}</small><b>{rows.filter(p=>p.status==="ACTIVE").length}</b></article><article><small>{en?"TOTAL UNITS":"ยูนิตทั้งหมด"}</small><b>{rows.reduce((n,p)=>n+(p.units?.length??0),0)}</b></article><article><small>{en?"TOTAL PLOTS":"แปลงทั้งหมด"}</small><b>{rows.reduce((n,p)=>n+(p.plots?.length??0),0)}</b></article></section>
-   <section className={styles.list}>
-    <div className={styles.listHead}><div><small>PORTFOLIO</small><h2>{en?"All projects":"โครงการทั้งหมด"}</h2></div><span>{rows.length} {en?"projects":"โครงการ"}</span></div>
-    {rows.map(p=>{const available=p.units?.filter(u=>u.status==="AVAILABLE").length??0; return <details className={styles.project} key={p.id}>
-      <summary><div className={styles.mark}>{p.code.slice(0,2)}</div><div className={styles.identity}><small>{p.code}</small><b><Link href={`/${locale}/app/projects/${p.id}`}>{p.name}</Link></b></div><span className={styles.badge}>{p.status}</span><div className={styles.mini}><span>{p.plots?.length??0}<small>{en?"Plots":"แปลง"}</small></span><span>{p.units?.length??0}<small>{en?"Units":"ยูนิต"}</small></span><span>{available}<small>{en?"Available":"ว่าง"}</small></span></div><i>⌄</i></summary>
-      <form action={updateProject} className={styles.form}><input type="hidden" name="locale" value={locale}/><input type="hidden" name="id" value={p.id}/>
-       <label>{en?"Project code":"รหัสโครงการ"}<input name="code" defaultValue={p.code} required/></label>
-       <label>{en?"Project name":"ชื่อโครงการ"}<input name="name" defaultValue={p.name} required/></label>
-       <label>{en?"Status":"สถานะ"}<select name="status" defaultValue={p.status}>{["PLANNING","ACTIVE","ON_HOLD","COMPLETED","ARCHIVED"].map(s=><option key={s}>{s}</option>)}</select></label>
-       <label>{en?"Target completion":"กำหนดแล้วเสร็จ"}<input type="date" name="target_completion_date" defaultValue={p.target_completion_date??""}/></label>
-       <div className={styles.formActions}><button type="submit">{en?"Save changes":"บันทึกการแก้ไข"}</button></div>
-      </form>
-    </details>})}
-    {!rows.length&&<div className={styles.empty}>{en?"No projects yet. Create your first project below.":"ยังไม่มีโครงการ สร้างโครงการแรกได้ด้านล่าง"}</div>}
-   </section>
-   <section id="new" className={styles.create}><div><small>NEW DEVELOPMENT</small><h2>{en?"Create a project":"สร้างโครงการใหม่"}</h2><p>{en?"Start with the core project information. Plots, phases and units can be added next.":"เริ่มจากข้อมูลหลักของโครงการ แล้วค่อยเพิ่ม Phase, Plot และ Unit ในขั้นต่อไป"}</p></div>
-    <form action={createProject} className={styles.form}><input type="hidden" name="locale" value={locale}/>
-      <label>{en?"Project code":"รหัสโครงการ"}<input name="code" placeholder="PROJECT-002" required/></label>
-      <label>{en?"Project name":"ชื่อโครงการ"}<input name="name" placeholder={en?"Project name":"ชื่อโครงการ"} required/></label>
-      <label>{en?"Status":"สถานะ"}<select name="status" defaultValue="PLANNING"><option>PLANNING</option><option>ACTIVE</option><option>ON_HOLD</option></select></label>
-      <label>{en?"Target completion":"กำหนดแล้วเสร็จ"}<input type="date" name="target_completion_date"/></label>
-      <div className={styles.formActions}><button type="submit">＋ {en?"Create Project":"สร้างโครงการ"}</button></div>
-    </form>
-   </section>
- </main>
+export const metadata: Metadata = { title: "Projects" };
+
+export default async function ProjectsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<{ q?: string; status?: string }>;
+}) {
+  const { locale, t } = await resolveLocale(params);
+  const { supabase } = await getSession(locale);
+  const { q = "", status = "" } = await searchParams;
+  const base = `/${locale}/app/projects`;
+
+  const { data } = await supabase
+    .from("projects")
+    .select(
+      "id,code,name,status,currency_code,target_completion_date,plots(id),units(id,status,list_price)",
+    )
+    .order("code");
+
+  const all = (data ?? []).map((p) => {
+    const units = p.units ?? [];
+    return {
+      ...p,
+      plotCount: (p.plots ?? []).length,
+      unitCount: units.length,
+      available: units.filter((u) => u.status === "AVAILABLE").length,
+      sold: units.filter((u) => soldStatuses.has(u.status)).length,
+      value: units.reduce((a, u) => a + toNumber(u.list_price), 0),
+      counts: countBy(units, (u) => u.status),
+    };
+  });
+  const needle = q.trim().toLowerCase();
+  const rows = all.filter(
+    (p) =>
+      (!status || p.status === status) &&
+      (!needle || `${p.code} ${p.name}`.toLowerCase().includes(needle)),
+  );
+  const total = (k: "plotCount" | "unitCount" | "available" | "sold" | "value") =>
+    rows.reduce((a, r) => a + r[k], 0);
+
+  const newProject = (
+    <Sheet title={t.projects.new} triggerLabel={t.projects.new}>
+      <ProjectForm t={t} locale={locale} action={createProject} />
+    </Sheet>
+  );
+
+  return (
+    <>
+      <PageHeader
+        title={t.projects.title}
+        subtitle={t.projects.subtitle}
+        crumbs={[{ label: t.nav.dashboard, href: `/${locale}/app` }, { label: t.projects.title }]}
+        actions={newProject}
+      />
+
+      <Panel
+        title={
+          <form className="flex flex-wrap items-center gap-2" role="search">
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" />
+              <Input
+                name="q"
+                defaultValue={q}
+                placeholder={t.projects.searchPlaceholder}
+                className="w-64 pl-8 font-normal"
+              />
+            </div>
+            <Select name="status" defaultValue={status} className="w-40 font-normal">
+              <option value="">{t.common.all}</option>
+              {projectStatuses.map((s) => (
+                <option key={s} value={s}>
+                  {t.status.project[s]}
+                </option>
+              ))}
+            </Select>
+            <Button type="submit" size="sm">
+              {t.common.filter}
+            </Button>
+            {q || status ? (
+              <ButtonLink href={base} variant="ghost" size="sm">
+                {t.common.clear}
+              </ButtonLink>
+            ) : null}
+          </form>
+        }
+        actions={
+          <span className="text-2xs text-muted num">
+            {rows.length} / {all.length} {t.common.rows}
+          </span>
+        }
+      >
+        {rows.length ? (
+          <Table>
+            <THead>
+              <tr>
+                <TH>{t.common.code}</TH>
+                <TH>{t.projects.fields.name}</TH>
+                <TH>{t.common.status}</TH>
+                <TH align="right">{t.projects.fields.plots}</TH>
+                <TH align="right">{t.projects.fields.units}</TH>
+                <TH align="right">{t.projects.fields.available}</TH>
+                <TH align="right">{t.projects.fields.sold}</TH>
+                <TH className="min-w-36" />
+                <TH align="right">{t.projects.fields.value}</TH>
+                <TH align="right">{t.projects.fields.target}</TH>
+              </tr>
+            </THead>
+            <tbody>
+              {rows.map((p) => (
+                <TR key={p.id}>
+                  <TD className="font-mono text-2xs text-muted">{p.code}</TD>
+                  <TD>
+                    <Link
+                      href={`${base}/${p.id}`}
+                      className="font-medium hover:text-brand hover:underline"
+                    >
+                      {p.name}
+                    </Link>
+                  </TD>
+                  <TD>
+                    <Badge tone={toneOf(p.status)}>{label(t.status.project, p.status)}</Badge>
+                  </TD>
+                  <TD align="right">{formatNumber(locale, p.plotCount)}</TD>
+                  <TD align="right">{formatNumber(locale, p.unitCount)}</TD>
+                  <TD align="right" className="text-emerald-700">
+                    {formatNumber(locale, p.available)}
+                  </TD>
+                  <TD align="right" className="text-brand">
+                    {formatNumber(locale, p.sold)}
+                  </TD>
+                  <TD>
+                    <InventoryBar counts={p.counts} labels={t.status.unit} />
+                  </TD>
+                  <TD align="right">{formatMoney(locale, p.value, p.currency_code ?? "THB")}</TD>
+                  <TD align="right" className="text-muted">
+                    {formatDate(locale, p.target_completion_date)}
+                  </TD>
+                </TR>
+              ))}
+            </tbody>
+            <TFoot>
+              <tr>
+                <TD colSpan={3}>{t.common.total}</TD>
+                <TD align="right">{formatNumber(locale, total("plotCount"))}</TD>
+                <TD align="right">{formatNumber(locale, total("unitCount"))}</TD>
+                <TD align="right">{formatNumber(locale, total("available"))}</TD>
+                <TD align="right">{formatNumber(locale, total("sold"))}</TD>
+                <TD />
+                <TD align="right">{formatMoney(locale, total("value"))}</TD>
+                <TD />
+              </tr>
+            </TFoot>
+          </Table>
+        ) : all.length ? (
+          <EmptyState title={t.common.noResults} />
+        ) : (
+          <EmptyState
+            icon={<Building2 />}
+            title={t.projects.empty}
+            body={t.projects.emptyBody}
+            action={newProject}
+          />
+        )}
+      </Panel>
+    </>
+  );
 }

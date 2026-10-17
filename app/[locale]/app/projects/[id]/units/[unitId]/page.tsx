@@ -1,13 +1,430 @@
-import Link from "next/link";import{notFound,redirect}from"next/navigation";import{createClient}from"@/lib/supabase/server";import{saveConstruction,saveFinancials,saveSale}from"./actions";import styles from"./unit.module.css";
-export default async function Unit360({params,searchParams}:{params:Promise<{locale:string,id:string,unitId:string}>,searchParams:Promise<Record<string,string|undefined>>}){const{locale:raw,id,unitId}=await params,locale=raw==="en"?"en":"th",en=locale==="en",q=await searchParams,s=await createClient();const{data:{user}}=await s.auth.getUser();if(!user)redirect(`/${locale}/login`);
-const{data:u}=await s.from("units").select("id,code,name,status,list_price,target_completion_date,project_id,projects(name,code),plots(code,land_area_sqm),house_types(code,name,bedrooms,bathrooms,gross_floor_area_sqm),unit_construction(*),unit_financials(*),unit_sales(*,customers(full_name,phone,email))").eq("id",unitId).eq("project_id",id).maybeSingle();if(!u)notFound();
-const con=Array.isArray(u.unit_construction)?u.unit_construction[0]:u.unit_construction,fin=Array.isArray(u.unit_financials)?u.unit_financials[0]:u.unit_financials,sale=Array.isArray(u.unit_sales)?u.unit_sales[0]:u.unit_sales;const cust=sale?.customers,fmt=new Intl.NumberFormat(en?"en-US":"th-TH",{maximumFractionDigits:0}),budget=Number(fin?.budget_amount||0),actual=Number(fin?.actual_cost||0),variance=budget?budget-actual:null;
-return <main className={styles.page}><header className={styles.hero}><div><Link href={`/${locale}/app/projects/${id}`}>← {en?"Project Workspace":"Project Workspace"}</Link><p>UNIT 360° · {u.code}</p><h1>{u.name||u.code}</h1><span>{(u.projects as any)?.name} · {(u.house_types as any)?.name||"—"} · {(u.plots as any)?.code||"—"}</span></div><div className={styles.price}><small>{en?"LIST PRICE":"ราคาขาย"}</small><b>{u.list_price!==null?"฿"+fmt.format(Number(u.list_price)):"—"}</b><em>{u.status}</em></div></header>
-{q.saved&&<div className={styles.ok}>✓ {en?"Saved":"บันทึกแล้ว"} · {q.saved}</div>}{q.error&&<div className={styles.err}>! {en?"Could not save":"บันทึกไม่สำเร็จ"} · {q.error}</div>}
-<section className={styles.kpis}><article><small>CONSTRUCTION</small><b>{Number(con?.progress_percent||0)}%</b><div><i style={{width:`${Number(con?.progress_percent||0)}%`}}/></div></article><article><small>{en?"BUDGET":"งบประมาณ"}</small><b>{fin?.budget_amount!==null&&fin?.budget_amount!==undefined?"฿"+fmt.format(budget):"—"}</b><em>{variance===null?"—":variance>=0?`฿${fmt.format(variance)} under`:`฿${fmt.format(Math.abs(variance))} over`}</em></article><article><small>SALES</small><b>{sale?.status||u.status}</b><em>{cust?.full_name|| (en?"No customer":"ยังไม่มีลูกค้า")}</em></article><article><small>{en?"HOUSE TYPE":"แบบบ้าน"}</small><b>{(u.house_types as any)?.code||"—"}</b><em>{(u.house_types as any)?.bedrooms??0} BR · {(u.house_types as any)?.bathrooms??0} BA · {(u.house_types as any)?.gross_floor_area_sqm??"—"} m²</em></article></section>
-<div className={styles.grid}>
-<section className={styles.card}><Head n="01" t={en?"Construction":"งานก่อสร้าง"}/><form action={saveConstruction} className={styles.form}><Hidden l={locale} p={id} u={unitId}/><label>{en?"Stage":"ขั้นงาน"}<select name="stage" defaultValue={con?.stage||"NOT_STARTED"}>{["NOT_STARTED","FOUNDATION","STRUCTURE","ROOF","MEP","FINISHING","INSPECTION","COMPLETED"].map(x=><option key={x}>{x}</option>)}</select></label><label>{en?"Progress %":"ความคืบหน้า %"}<input name="progress_percent" type="number" min="0" max="100" step=".01" defaultValue={con?.progress_percent??0}/></label><label>{en?"Start date":"วันเริ่ม"}<input name="start_date" type="date" defaultValue={con?.start_date??""}/></label><label>{en?"Target completion":"กำหนดเสร็จ"}<input name="target_completion_date" type="date" defaultValue={con?.target_completion_date??u.target_completion_date??""}/></label><label className={styles.full}>{en?"Notes":"หมายเหตุ"}<textarea name="notes" defaultValue={con?.notes??""}/></label><button>{en?"Save Construction":"บันทึกงานก่อสร้าง"}</button></form></section>
-<section className={styles.card}><Head n="02" t={en?"Cost & Budget":"ต้นทุนและงบประมาณ"}/><form action={saveFinancials} className={styles.form}><Hidden l={locale} p={id} u={unitId}/><label>{en?"Budget":"งบประมาณ"}<input name="budget_amount" type="number" min="0" step=".01" defaultValue={fin?.budget_amount??""}/></label><label>{en?"Committed":"ยอดผูกพัน"}<input name="committed_amount" type="number" min="0" step=".01" defaultValue={fin?.committed_amount??0}/></label><label>{en?"Actual cost":"ต้นทุนจริง"}<input name="actual_cost" type="number" min="0" step=".01" defaultValue={fin?.actual_cost??0}/></label><div className={styles.costbox}><span>{en?"Variance":"ส่วนต่าง"}</span><b>{variance===null?"—":(variance>=0?"+":"-")+"฿"+fmt.format(Math.abs(variance))}</b></div><button>{en?"Save Financials":"บันทึกต้นทุน"}</button></form></section>
-<section className={styles.cardWide}><Head n="03" t={en?"Sales & Customer":"การขายและลูกค้า"}/><form action={saveSale} className={styles.saleForm}><Hidden l={locale} p={id} u={unitId}/><label>{en?"Sales status":"สถานะขาย"}<select name="status" defaultValue={sale?.status||u.status}>{["AVAILABLE","HOLD","RESERVED","CONTRACTED","SOLD","TRANSFERRED"].map(x=><option key={x}>{x}</option>)}</select></label><label>{en?"Agreed price":"ราคาตกลง"}<input name="agreed_price" type="number" min="0" step=".01" defaultValue={sale?.agreed_price??""}/></label><label>{en?"Customer":"ชื่อลูกค้า"}<input name="customer_name" defaultValue={cust?.full_name??""}/></label><label>{en?"Phone":"โทรศัพท์"}<input name="phone" defaultValue={cust?.phone??""}/></label><label>{en?"Email":"อีเมล"}<input name="email" type="email" defaultValue={cust?.email??""}/></label><label>{en?"Reservation":"วันจอง"}<input name="reservation_date" type="date" defaultValue={sale?.reservation_date??""}/></label><label>{en?"Contract":"วันทำสัญญา"}<input name="contract_date" type="date" defaultValue={sale?.contract_date??""}/></label><label>{en?"Transfer":"วันโอน"}<input name="transfer_date" type="date" defaultValue={sale?.transfer_date??""}/></label><label className={styles.full}>{en?"Notes":"หมายเหตุ"}<textarea name="notes" defaultValue={sale?.notes??""}/></label><button>{en?"Save Sales":"บันทึกการขาย"}</button></form></section>
-</div></main>}
-function Head({n,t}:{n:string,t:string}){return <div className={styles.head}><span>{n}</span><h2>{t}</h2></div>}function Hidden({l,p,u}:{l:string,p:string,u:string}){return <><input type="hidden" name="locale" value={l}/><input type="hidden" name="project_id" value={p}/><input type="hidden" name="unit_id" value={u}/></>}
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowLeft, Pencil } from "lucide-react";
+import { getSession } from "@/lib/auth";
+import { resolveLocale } from "@/lib/i18n";
+import { label } from "@/lib/i18n/label";
+import { formatDate, formatMoney, formatNumber, toNumber } from "@/lib/format";
+import { constructionStages, toneOf, unitStatuses } from "@/lib/status";
+import { DetailList, Panel } from "@/components/ui/panel";
+import { Kpi, KpiStrip } from "@/components/ui/kpi";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Sheet, SheetFooter } from "@/components/ui/sheet";
+import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { cn } from "@/components/ui/cn";
+import { saveConstruction, saveFinancials, saveSale } from "./actions";
+
+type One<T> = T | T[] | null | undefined;
+const one = <T,>(v: One<T>): T | undefined => (Array.isArray(v) ? v[0] : (v ?? undefined));
+
+export default async function Unit360({
+  params,
+}: {
+  params: Promise<{ locale: string; id: string; unitId: string }>;
+}) {
+  const { locale, t } = await resolveLocale(params);
+  const { id, unitId } = await params;
+  const { supabase } = await getSession(locale);
+
+  const { data: u } = await supabase
+    .from("units")
+    .select(
+      "id,code,name,status,list_price,target_completion_date,project_id,plots(code,land_area_sqm),house_types(code,name,bedrooms,bathrooms,gross_floor_area_sqm),unit_construction(*),unit_financials(*),unit_sales(*,customers(full_name,phone,email))",
+    )
+    .eq("id", unitId)
+    .eq("project_id", id)
+    .maybeSingle();
+  if (!u) notFound();
+
+  const plot = one(u.plots);
+  const houseType = one(u.house_types);
+  const con = one(u.unit_construction);
+  const fin = one(u.unit_financials);
+  const sale = one(u.unit_sales);
+  const customer = one(sale?.customers);
+
+  const budget = toNumber(fin?.budget_amount);
+  const committed = toNumber(fin?.committed_amount);
+  const actual = toNumber(fin?.actual_cost);
+  const variance = budget ? budget - actual : null;
+  const progress = toNumber(con?.progress_percent);
+  const hidden = <Hidden values={{ locale, project_id: id, unit_id: unitId }} />;
+  const editIcon = <Pencil />;
+  const date = (v: string | null | undefined) => formatDate(locale, v);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Link
+          href={`/${locale}/app/projects/${id}`}
+          className="grid size-8 place-items-center rounded-md border border-line bg-surface text-muted hover:text-ink"
+          aria-label={t.common.back}
+        >
+          <ArrowLeft className="size-4" />
+        </Link>
+        <div>
+          <p className="text-2xs font-medium tracking-wide text-muted uppercase">{t.unit.title}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold">{u.code}</h2>
+            {u.name ? <span className="text-[13px] text-muted">{u.name}</span> : null}
+            <Badge tone={toneOf(u.status)}>{label(t.status.unit, u.status)}</Badge>
+          </div>
+        </div>
+      </div>
+
+      <KpiStrip cols={5}>
+        <Kpi
+          label={t.project.fields.listPrice}
+          value={u.list_price != null ? formatMoney(locale, u.list_price) : "—"}
+        />
+        <Kpi
+          label={t.unit.fields.agreedPrice}
+          value={sale?.agreed_price != null ? formatMoney(locale, sale.agreed_price) : "—"}
+          tone="brand"
+        />
+        <Kpi
+          label={t.unit.fields.progress}
+          value={`${Math.round(progress)}%`}
+          sub={con?.stage ? label(t.status.stage, con.stage) : undefined}
+        />
+        <Kpi
+          label={t.unit.fields.actual}
+          value={formatMoney(locale, actual)}
+          sub={`${t.unit.fields.budget} ${formatMoney(locale, budget)}`}
+        />
+        <Kpi
+          label={
+            variance != null && variance < 0 ? t.unit.fields.overBudget : t.unit.fields.variance
+          }
+          value={variance != null ? formatMoney(locale, Math.abs(variance)) : "—"}
+          tone={variance == null ? "default" : variance < 0 ? "negative" : "positive"}
+        />
+      </KpiStrip>
+
+      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        <Panel
+          title={t.unit.sale}
+          actions={
+            <Sheet
+              title={t.unit.editSale}
+              triggerLabel={t.common.edit}
+              triggerIcon={editIcon}
+              triggerVariant="ghost"
+              triggerSize="xs"
+            >
+              <form action={saveSale} className="space-y-3">
+                {hidden}
+                <Field label={t.common.status}>
+                  <Select name="status" defaultValue={sale?.status ?? u.status ?? "AVAILABLE"}>
+                    {unitStatuses.map((s) => (
+                      <option key={s} value={s}>
+                        {t.status.unit[s]}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={t.unit.fields.customerName}>
+                  <Input name="customer_name" defaultValue={customer?.full_name ?? ""} />
+                </Field>
+                <FormGrid>
+                  <Field label={t.unit.fields.phone}>
+                    <Input name="phone" type="tel" defaultValue={customer?.phone ?? ""} />
+                  </Field>
+                  <Field label={t.unit.fields.email}>
+                    <Input name="email" type="email" defaultValue={customer?.email ?? ""} />
+                  </Field>
+                </FormGrid>
+                <Field label={`${t.unit.fields.agreedPrice} (THB)`}>
+                  <Input
+                    name="agreed_price"
+                    type="number"
+                    min="0"
+                    step="1000"
+                    defaultValue={sale?.agreed_price ?? ""}
+                  />
+                </Field>
+                <FormGrid cols={3}>
+                  <Field label={t.unit.fields.reservationDate}>
+                    <Input
+                      name="reservation_date"
+                      type="date"
+                      defaultValue={sale?.reservation_date ?? ""}
+                    />
+                  </Field>
+                  <Field label={t.unit.fields.contractDate}>
+                    <Input
+                      name="contract_date"
+                      type="date"
+                      defaultValue={sale?.contract_date ?? ""}
+                    />
+                  </Field>
+                  <Field label={t.unit.fields.transferDate}>
+                    <Input
+                      name="transfer_date"
+                      type="date"
+                      defaultValue={sale?.transfer_date ?? ""}
+                    />
+                  </Field>
+                </FormGrid>
+                <Field label={t.common.notes}>
+                  <Textarea name="notes" defaultValue={sale?.notes ?? ""} />
+                </Field>
+                <SheetFooter>
+                  <SubmitButton>{t.common.save}</SubmitButton>
+                </SheetFooter>
+              </form>
+            </Sheet>
+          }
+        >
+          <DetailList
+            items={[
+              {
+                label: t.unit.customer,
+                value: customer ? (
+                  <div>
+                    <p>{customer.full_name}</p>
+                    <p className="text-2xs font-normal text-muted">
+                      {[customer.phone, customer.email].filter(Boolean).join(" · ") || "—"}
+                    </p>
+                  </div>
+                ) : (
+                  <span className="font-normal text-faint">{t.unit.noCustomer}</span>
+                ),
+              },
+              {
+                label: t.unit.fields.agreedPrice,
+                value: sale?.agreed_price != null ? formatMoney(locale, sale.agreed_price) : "—",
+              },
+              { label: t.unit.fields.reservationDate, value: date(sale?.reservation_date) },
+              { label: t.unit.fields.contractDate, value: date(sale?.contract_date) },
+              { label: t.unit.fields.transferDate, value: date(sale?.transfer_date) },
+              {
+                label: t.common.notes,
+                value: (
+                  <span className="font-normal whitespace-pre-line">{sale?.notes || "—"}</span>
+                ),
+              },
+            ]}
+          />
+        </Panel>
+
+        <Panel
+          title={t.unit.construction}
+          actions={
+            <Sheet
+              title={t.unit.editConstruction}
+              triggerLabel={t.common.edit}
+              triggerIcon={editIcon}
+              triggerVariant="ghost"
+              triggerSize="xs"
+            >
+              <form action={saveConstruction} className="space-y-3">
+                {hidden}
+                <FormGrid>
+                  <Field label={t.unit.fields.stage}>
+                    <Select name="stage" defaultValue={con?.stage ?? "NOT_STARTED"}>
+                      {constructionStages.map((s) => (
+                        <option key={s} value={s}>
+                          {t.status.stage[s]}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label={t.unit.fields.progress}>
+                    <Input
+                      name="progress_percent"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      defaultValue={progress}
+                    />
+                  </Field>
+                </FormGrid>
+                <FormGrid>
+                  <Field label={t.unit.fields.startDate}>
+                    <Input name="start_date" type="date" defaultValue={con?.start_date ?? ""} />
+                  </Field>
+                  <Field label={t.unit.fields.targetDate}>
+                    <Input
+                      name="target_completion_date"
+                      type="date"
+                      defaultValue={con?.target_completion_date ?? ""}
+                    />
+                  </Field>
+                </FormGrid>
+                <Field label={t.common.notes}>
+                  <Textarea name="notes" defaultValue={con?.notes ?? ""} />
+                </Field>
+                <SheetFooter>
+                  <SubmitButton>{t.common.save}</SubmitButton>
+                </SheetFooter>
+              </form>
+            </Sheet>
+          }
+        >
+          <div className="border-b border-line px-4 py-3">
+            <Progress value={progress} />
+            <ol className="mt-3 grid grid-cols-8 gap-0.5">
+              {constructionStages.map((s, i) => {
+                const reached = con?.stage
+                  ? constructionStages.indexOf(con.stage as (typeof constructionStages)[number]) >=
+                    i
+                  : false;
+                return (
+                  <li
+                    key={s}
+                    title={t.status.stage[s]}
+                    className={cn("h-1 rounded-full", reached ? "bg-brand" : "bg-slate-200")}
+                  />
+                );
+              })}
+            </ol>
+          </div>
+          <DetailList
+            items={[
+              {
+                label: t.unit.fields.stage,
+                value: con?.stage ? label(t.status.stage, con.stage) : "—",
+              },
+              { label: t.unit.fields.startDate, value: date(con?.start_date) },
+              {
+                label: t.unit.fields.targetDate,
+                value: date(con?.target_completion_date ?? u.target_completion_date),
+              },
+              {
+                label: t.common.notes,
+                value: <span className="font-normal whitespace-pre-line">{con?.notes || "—"}</span>,
+              },
+            ]}
+          />
+        </Panel>
+
+        <Panel
+          title={t.unit.cost}
+          actions={
+            <Sheet
+              title={t.unit.editCost}
+              triggerLabel={t.common.edit}
+              triggerIcon={editIcon}
+              triggerVariant="ghost"
+              triggerSize="xs"
+            >
+              <form action={saveFinancials} className="space-y-3">
+                {hidden}
+                <Field label={`${t.unit.fields.budget} (THB)`}>
+                  <Input
+                    name="budget_amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue={fin?.budget_amount ?? ""}
+                  />
+                </Field>
+                <Field label={`${t.unit.fields.committed} (THB)`}>
+                  <Input
+                    name="committed_amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue={fin?.committed_amount ?? ""}
+                  />
+                </Field>
+                <Field label={`${t.unit.fields.actual} (THB)`}>
+                  <Input
+                    name="actual_cost"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue={fin?.actual_cost ?? ""}
+                  />
+                </Field>
+                <SheetFooter>
+                  <SubmitButton>{t.common.save}</SubmitButton>
+                </SheetFooter>
+              </form>
+            </Sheet>
+          }
+        >
+          <div className="space-y-2.5 border-b border-line px-4 py-3">
+            {[
+              { k: t.unit.fields.committed, v: committed, c: "bg-sky-500" },
+              {
+                k: t.unit.fields.actual,
+                v: actual,
+                c: budget && actual > budget ? "bg-red-500" : "bg-brand",
+              },
+            ].map((row) => (
+              <div key={row.k}>
+                <div className="mb-1 flex justify-between text-2xs">
+                  <span className="text-muted">{row.k}</span>
+                  <span className="font-medium num">
+                    {budget ? `${Math.round((row.v / budget) * 100)}%` : "—"}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className={cn("h-full rounded-full", row.c)}
+                    style={{ width: `${budget ? Math.min(100, (row.v / budget) * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <DetailList
+            items={[
+              { label: t.unit.fields.budget, value: formatMoney(locale, budget) },
+              { label: t.unit.fields.committed, value: formatMoney(locale, committed) },
+              { label: t.unit.fields.actual, value: formatMoney(locale, actual) },
+              {
+                label: t.unit.fields.variance,
+                value:
+                  variance != null ? (
+                    <span className={cn(variance < 0 ? "text-red-700" : "text-emerald-700")}>
+                      {formatMoney(locale, variance)}
+                    </span>
+                  ) : (
+                    "—"
+                  ),
+              },
+            ]}
+          />
+        </Panel>
+
+        <Panel title={t.unit.property}>
+          <DetailList
+            items={[
+              { label: t.project.fields.plot, value: plot?.code ?? "—" },
+              {
+                label: t.project.fields.landArea,
+                value:
+                  plot?.land_area_sqm != null ? formatNumber(locale, plot.land_area_sqm, 2) : "—",
+              },
+              {
+                label: t.project.fields.houseType,
+                value: houseType ? `${houseType.code} · ${houseType.name}` : "—",
+              },
+              {
+                label: t.project.fields.bedrooms,
+                value: houseType ? formatNumber(locale, houseType.bedrooms) : "—",
+              },
+              {
+                label: t.project.fields.bathrooms,
+                value: houseType ? formatNumber(locale, houseType.bathrooms) : "—",
+              },
+              {
+                label: t.project.fields.gfa,
+                value:
+                  houseType?.gross_floor_area_sqm != null
+                    ? formatNumber(locale, houseType.gross_floor_area_sqm, 2)
+                    : "—",
+              },
+            ]}
+          />
+        </Panel>
+      </div>
+    </div>
+  );
+}

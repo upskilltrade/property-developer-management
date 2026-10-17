@@ -1,2 +1,171 @@
-import Link from "next/link";import {redirect} from "next/navigation";import {createClient} from "@/lib/supabase/server";import {assignAccess} from "./actions";
-export default async function Access({params,searchParams}:{params:Promise<{locale:string}>,searchParams:Promise<Record<string,string|undefined>>}){const {locale:raw}=await params;const locale=raw==="en"?"en":"th",en=locale==="en";const q=await searchParams;const s=await createClient();const {data:{user}}=await s.auth.getUser();if(!user)redirect(`/${locale}/login`);const {data:a}=await s.rpc("current_access_profile");const own=(a??[]).find((x:any)=>x.role_code==="OWNER"&&x.scope_type==="ORGANIZATION");if(!own)redirect(`/${locale}/app/access-denied`);const [{data:members},{data:roles},{data:projects}]=await Promise.all([s.from("organization_memberships").select("id,user_id,status,profiles:user_id(display_name)").eq("organization_id",own.organization_id),s.from("roles").select("id,code,name_th,name_en").eq("organization_id",own.organization_id).order("code"),s.from("projects").select("id,name,code").eq("organization_id",own.organization_id).order("name")]);return <main style={{minHeight:"100vh",background:"#F6F7F9",padding:"40px clamp(20px,5vw,72px)",fontFamily:"Arial",color:"#202124"}}><div style={{maxWidth:1100,margin:"auto"}}><Link href={`/${locale}/app`}>← Dashboard</Link><p style={{fontSize:11,letterSpacing:1.5,color:"#6B7280",marginTop:38}}>M1 · ACCESS CONTROL</p><h1>{en?"People & Access":"บุคลากรและสิทธิ์การใช้งาน"}</h1><p style={{color:"#6B7280"}}>{en?"Assign role and organization/project scope.":"กำหนด Role และขอบเขต Organization / Project ให้แต่ละบัญชี"}</p>{q.saved&&<p>✓ {en?"Access assigned":"กำหนดสิทธิ์แล้ว"}</p>}<form action={assignAccess} style={{marginTop:28,background:"#fff",border:"1px solid #E5E7EB",borderRadius:16,padding:20,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}><input type="hidden" name="locale" value={locale}/><select name="membership_id" required><option value="">{en?"Select person":"เลือกบุคลากร"}</option>{(members??[]).map((m:any)=><option key={m.id} value={m.id}>{m.profiles?.display_name||m.user_id} · {m.status}</option>)}</select><select name="role_id" required><option value="">{en?"Select role":"เลือก Role"}</option>{(roles??[]).map((r:any)=><option key={r.id} value={r.id}>{en?r.name_en:r.name_th}</option>)}</select><select name="scope_type"><option value="PROJECT">PROJECT</option><option value="ORGANIZATION">ORGANIZATION</option></select><select name="scope_id"><option value="">{en?"Project scope":"ขอบเขตโครงการ"}</option>{(projects??[]).map((p:any)=><option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}</select><button style={{background:"#F4B400",border:0,borderRadius:10,fontWeight:800,padding:12}}>{en?"Assign access":"กำหนดสิทธิ์"}</button></form><section style={{marginTop:18,background:"#fff",border:"1px solid #E5E7EB",borderRadius:16,padding:20}}><b>{en?"Active memberships":"บัญชีในองค์กร"}</b>{(members??[]).map((m:any)=><div key={m.id} style={{padding:"12px 0",borderBottom:"1px solid #eee"}}>{m.profiles?.display_name||m.user_id} <small>· {m.status}</small></div>)}</section></div></main>}
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { UserPlus, Users } from "lucide-react";
+import { getSession } from "@/lib/auth";
+import { resolveLocale } from "@/lib/i18n";
+import { label } from "@/lib/i18n/label";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { Table, TD, TH, THead, TR } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Sheet, SheetFooter } from "@/components/ui/sheet";
+import { Field, Hidden, Select } from "@/components/ui/field";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { assignAccess } from "./actions";
+
+export const metadata: Metadata = { title: "User access" };
+
+type Grant = {
+  scope_type: string;
+  scope_id: string | null;
+  role: { code: string; name_th: string; name_en: string } | null;
+};
+
+export default async function AccessPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale, t } = await resolveLocale(params);
+  const { supabase, ownerOrganizationId: org } = await getSession(locale);
+  if (!org) redirect(`/${locale}/app/access-denied`);
+
+  const [{ data: members }, { data: roles }, { data: projects }] = await Promise.all([
+    supabase
+      .from("organization_memberships")
+      .select(
+        "id,user_id,status,profiles:user_id(display_name),membership_roles(scope_type,scope_id,role:roles(code,name_th,name_en))",
+      )
+      .eq("organization_id", org),
+    supabase
+      .from("roles")
+      .select("id,code,name_th,name_en")
+      .eq("organization_id", org)
+      .order("code"),
+    supabase.from("projects").select("id,name,code").eq("organization_id", org).order("code"),
+  ]);
+  const projectCode = new Map((projects ?? []).map((p) => [p.id, p.code]));
+  const roleName = (r: { code: string; name_th: string; name_en: string }) =>
+    (locale === "th" ? r.name_th : r.name_en) || r.code;
+  const memberName = (m: { user_id: string; profiles: unknown }) => {
+    const p = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+    return (p as { display_name?: string } | null)?.display_name || m.user_id.slice(0, 8);
+  };
+
+  return (
+    <>
+      <PageHeader
+        title={t.access.title}
+        subtitle={t.access.subtitle}
+        crumbs={[{ label: t.nav.dashboard, href: `/${locale}/app` }, { label: t.access.title }]}
+        actions={
+          <Sheet title={t.access.assign} triggerLabel={t.access.assign} triggerIcon={<UserPlus />}>
+            <form action={assignAccess} className="space-y-3">
+              <Hidden values={{ locale }} />
+              <Field label={t.access.member} required>
+                <Select name="membership_id" required defaultValue="">
+                  <option value="" disabled>
+                    —
+                  </option>
+                  {(members ?? []).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {memberName(m)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label={t.access.role} required>
+                <Select name="role_id" required defaultValue="">
+                  <option value="" disabled>
+                    —
+                  </option>
+                  {(roles ?? []).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.code} · {roleName(r)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label={t.access.scope}>
+                <Select name="scope_type" defaultValue="PROJECT">
+                  <option value="PROJECT">{t.access.scopeProject}</option>
+                  <option value="ORGANIZATION">{t.access.scopeOrg}</option>
+                </Select>
+              </Field>
+              <Field label={t.finance.fields.project} hint={t.access.scopeProject}>
+                <Select name="scope_id" defaultValue="">
+                  <option value="">—</option>
+                  {(projects ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.code} · {p.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <SheetFooter>
+                <SubmitButton>{t.common.save}</SubmitButton>
+              </SheetFooter>
+            </form>
+          </Sheet>
+        }
+      />
+      <Panel
+        title={t.access.members}
+        actions={<span className="text-2xs text-muted num">{members?.length ?? 0}</span>}
+      >
+        {members?.length ? (
+          <Table>
+            <THead>
+              <tr>
+                <TH>{t.access.member}</TH>
+                <TH>{t.common.status}</TH>
+                <TH>{t.access.currentRoles}</TH>
+              </tr>
+            </THead>
+            <tbody>
+              {members.map((m) => {
+                const grants = (m.membership_roles ?? []) as unknown as Grant[];
+                return (
+                  <TR key={m.id}>
+                    <TD>
+                      <p className="font-medium">{memberName(m)}</p>
+                      <p className="font-mono text-[10px] text-faint">{m.user_id}</p>
+                    </TD>
+                    <TD>
+                      <Badge tone={m.status === "ACTIVE" ? "success" : "neutral"}>
+                        {label(t.status.membership, m.status)}
+                      </Badge>
+                    </TD>
+                    <TD className="whitespace-normal">
+                      {grants.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {grants.map((g, i) => (
+                            <span
+                              key={i}
+                              className="inline-flex items-center gap-1 rounded border border-line bg-subtle px-1.5 py-0.5 text-2xs"
+                            >
+                              <span className="font-semibold">
+                                {g.role ? roleName(g.role) : "?"}
+                              </span>
+                              <span className="text-muted">
+                                ·{" "}
+                                {g.scope_type === "ORGANIZATION"
+                                  ? t.access.scopeOrg
+                                  : (projectCode.get(g.scope_id ?? "") ?? g.scope_id)}
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-2xs text-faint">{t.access.noRoles}</span>
+                      )}
+                    </TD>
+                  </TR>
+                );
+              })}
+            </tbody>
+          </Table>
+        ) : (
+          <EmptyState icon={<Users />} title={t.access.noMembers} />
+        )}
+      </Panel>
+    </>
+  );
+}

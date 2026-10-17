@@ -1,10 +1,610 @@
-import Link from "next/link";import {redirect} from "next/navigation";import {createClient} from "@/lib/supabase/server";import styles from "./finance.module.css";import {approveFinancialDocument,approveProcurementContract,createFinancialDocument,createProcurementContract,postApprovedFinancialDocument,postFinancialDocument,createCostAllocation,postCostAllocation} from "./actions";
-export default async function Finance({params}:{params:Promise<{locale:string,id:string}>}){const {locale:raw,id}=await params;const locale=raw==="en"?"en":"th",en=locale==="en";const s=await createClient();const {data:{user}}=await s.auth.getUser();if(!user)redirect("/"+locale+"/login");
-const [{data:p},{data:b},{data:docs},{data:categories},{data:contracts},{data:summaryRows},{data:cashAccounts},{data:allocations}]=await Promise.all([s.from("projects").select("id,code,name").eq("id",id).single(),s.from("project_budgets").select("budget_amount,forecast_amount,cost_categories(code,name,category_type)").eq("project_id",id),s.from("financial_documents").select("id,document_no,document_type,document_date,counterparty_name,amount,status,description,settled_amount,source_document_id,cost_category_id,vat_rate,vat_amount,wht_rate,wht_amount,tax_invoice_no,counterparty_tax_id").eq("project_id",id).order("document_date",{ascending:false}).limit(100),s.from("cost_categories").select("id,code,name").eq("active",true).order("code"),s.from("procurement_contracts").select("id,contract_no,contract_type,vendor_name,amount,status,contract_date").eq("project_id",id).order("contract_date",{ascending:false}).limit(50),s.rpc("get_project_finance_summary_v2",{target_project:id}),s.from("cash_accounts").select("id,code,name,account_kind,currency_code,opening_balance").eq("active",true).order("code"),s.from("cost_allocation_runs").select("id,allocation_no,allocation_date,method,source_amount,status,description").eq("project_id",id).order("allocation_date",{ascending:false}).limit(30)]);
-const money=new Intl.NumberFormat(en?"en-US":"th-TH",{maximumFractionDigits:0});
-const summary=(summaryRows?.[0]??null) as null|{budget:number|string|null;forecast:number|string|null;latest_date:string|null;opening_cash:number|string|null;cash_in:number|string|null;cash_out:number|string|null;closing_cash:number|string|null;ap_outstanding:number|string|null;ar_outstanding:number|string|null;committed:number|string|null;actual:number|string|null;customer_deposits:number|string|null};
-const budget=Number(summary?.budget??0),forecast=Number(summary?.forecast??0),today=summary?.latest_date??new Date().toISOString().slice(0,10),opening=Number(summary?.opening_cash??0),cashIn=Number(summary?.cash_in??0),cashOut=Number(summary?.cash_out??0),closing=Number(summary?.closing_cash??0),net=cashIn-cashOut,ap=Number(summary?.ap_outstanding??0),ar=Number(summary?.ar_outstanding??0),committed=Number(summary?.committed??0),actual=Number(summary?.actual??0),remaining=budget-actual,customerDeposits=Number(summary?.customer_deposits??0);
-return <main className={styles.page}><div className={styles.wrap}><header className={styles.top}><div><Link href={"/"+locale+"/app/projects/"+id}>← Project Workspace</Link><p>{p?.code}</p><h1>{en?"Executive Finance":"การเงินโครงการ"}</h1><span>{p?.name}</span></div><div className={styles.date}>{en?"Latest posting":"รายการล่าสุด"} · {today}</div></header>
-<section className={styles.kpis}><K l="OPENING CASH" v={"฿"+money.format(opening)}/><K l="CLOSING CASH" v={"฿"+money.format(closing)} cls={closing>=0?styles.positive:styles.negative}/><K l="PROJECT BUDGET" v={"฿"+money.format(budget)}/><K l="FORECAST AT COMPLETION" v={"฿"+money.format(forecast)} cls={forecast>budget?styles.negative:""}/><K l="FORECAST VARIANCE" v={(forecast-budget>0?"+":"")+"฿"+money.format(forecast-budget)} cls={forecast>budget?styles.negative:styles.positive}/><K l="CASH IN" v={"฿"+money.format(cashIn)} cls={styles.positive}/><K l="CASH OUT" v={"฿"+money.format(cashOut)} cls={styles.negative}/><K l="NET CASH FLOW" v={(net>=0?"+":"")+"฿"+money.format(net)} cls={net>=0?styles.positive:styles.negative}/><K l="ACCOUNTS PAYABLE" v={"฿"+money.format(ap)}/><K l="ACCOUNTS RECEIVABLE" v={"฿"+money.format(ar)}/><K l="COMMITTED COST" v={"฿"+money.format(committed)}/><K l="ACTUAL COST" v={"฿"+money.format(actual)}/><K l="REMAINING BUDGET" v={"฿"+money.format(remaining)} cls={remaining>=0?styles.positive:styles.negative}/><K l="CUSTOMER DEPOSITS" v={"฿"+money.format(customerDeposits)}/></section><section className={styles.card}><div className={styles.head}><b>{en?"PO / Contract Control":"ควบคุม PO / สัญญา"}</b><span>PO / CONTRACT → APPROVE → COMMITMENT</span></div><form action={createProcurementContract} className={styles.formGrid6}><input type="hidden" name="locale" value={locale}/><input type="hidden" name="project_id" value={id}/><select name="contract_type"><option value="PO">PO</option><option value="CONTRACT">CONTRACT</option></select><input name="contract_date" type="date" defaultValue={today}/><input name="vendor_name" placeholder={en?"Vendor":"ผู้รับเหมา / ผู้ขาย"} required/><select name="cost_category_id" required><option value="">{en?"Cost category":"หมวดต้นทุน"}</option>{(categories??[]).map(x=><option key={x.id} value={x.id}>{x.code} · {x.name}</option>)}</select><input name="amount" type="number" min="0.01" step=".01" placeholder={en?"Amount":"มูลค่า"} required/><button>＋ {en?"Create":"สร้าง PO/สัญญา"}</button></form>{(contracts??[]).map(x=><div className={styles.tx} key={x.id}><small>{x.contract_type}</small><div><b>{x.contract_no}</b><span>{x.vendor_name}</span></div><div><strong>฿{money.format(Number(x.amount))}</strong>{x.status==="DRAFT"?<form action={approveProcurementContract}><input type="hidden" name="locale" value={locale}/><input type="hidden" name="project_id" value={id}/><input type="hidden" name="contract_id" value={x.id}/><button>APPROVE</button></form>:<span>{x.status}</span>}</div></div>)}</section><section className={styles.card}><div className={styles.head}><b>{en?"New Financial Document":"บันทึกรายการการเงิน"}</b><span>DRAFT → APPROVE → POST</span></div><form action={createFinancialDocument} className={styles.formGrid6}><input type="hidden" name="locale" value={locale}/><input type="hidden" name="project_id" value={id}/><select name="document_type" required>{["PAYMENT","RECEIPT","AP","AR","COMMITMENT"].map(x=><option key={x}>{x}</option>)}</select><input name="document_date" type="date" defaultValue={today}/><input name="counterparty_name" placeholder={en?"Vendor / Customer":"ผู้ขาย / ลูกค้า"}/><select name="cost_category_id"><option value="">{en?"Cost category":"หมวดต้นทุน"}</option>{(categories??[]).map(x=><option key={x.id} value={x.id}>{x.code} · {x.name}</option>)}</select><select name="cash_account_id" required><option value="">{en?"Cash / bank":"บัญชีเงินสด / ธนาคาร"}</option>{(cashAccounts??[]).map(x=><option key={x.id} value={x.id}>{x.code} · {x.name}</option>)}</select><select name="receipt_purpose"><option value="DIRECT_REVENUE">{en?"Direct revenue":"รายรับโดยตรง"}</option><option value="CUSTOMER_DEPOSIT">{en?"Customer deposit":"เงินจอง / เงินมัดจำลูกค้า"}</option></select><select name="source_document_id"><option value="">{en?"Direct transaction":"รายการตรง"}</option>{(docs??[]).filter(x=>["AP","AR"].includes(x.document_type)&&["APPROVED","POSTED"].includes(x.status)&&Number(x.amount)>Number(x.settled_amount||0)).map(x=><option key={x.id} value={x.id}>{x.document_type} · {x.document_no} · OUT ฿{money.format(Number(x.amount)-Number(x.settled_amount||0))}</option>)}</select><input name="amount" type="number" min="0.01" step=".01" placeholder={en?"Base / cash amount":"ฐานภาษี / เงินสด"} required/><select name="vat_rate" defaultValue="0"><option value="0">VAT 0%</option><option value="7">VAT 7%</option></select><select name="wht_rate" defaultValue="0"><option value="0">WHT 0%</option><option value="1">WHT 1%</option><option value="2">WHT 2%</option><option value="3">WHT 3%</option><option value="5">WHT 5%</option></select><input name="tax_invoice_no" placeholder={en?"Tax invoice no.":"เลขใบกำกับภาษี"}/><input name="counterparty_tax_id" placeholder={en?"Tax ID":"เลขประจำตัวผู้เสียภาษี"}/><input name="description" placeholder={en?"Description":"รายละเอียด"}/><button>＋ {en?"Create Draft":"สร้าง Draft"}</button></form></section><section className={styles.card}><div className={styles.head}><b>{en?"Shared Cost Allocation":"กระจายต้นทุนส่วนกลาง"}</b><span>LAND AREA · GFA · SALES VALUE</span></div><form action={createCostAllocation} className={styles.formGrid5}><input type="hidden" name="locale" value={locale}/><input type="hidden" name="project_id" value={id}/><select name="method"><option value="LAND_AREA">{en?"Land area":"พื้นที่ดิน"}</option><option value="GFA">GFA</option><option value="SALES_VALUE">{en?"Sales value":"มูลค่าขาย"}</option></select><select name="source_document_id"><option value="">{en?"No source document":"ไม่ผูกเอกสารต้นทาง"}</option>{(docs??[]).filter(x=>["AP","PAYMENT"].includes(x.document_type)&&x.status==="POSTED").map(x=><option key={x.id} value={x.id}>{x.document_no} · ฿{money.format(Number(x.amount))}</option>)}</select><input name="source_amount" type="number" min=".01" step=".01" placeholder={en?"Amount to allocate":"ยอดที่ต้องการกระจาย"} required/><input name="description" placeholder={en?"Allocation note":"หมายเหตุ"}/><button>＋ {en?"Generate":"คำนวณ"}</button></form>{(allocations??[]).map(x=><div className={styles.tx} key={x.id}><small>{x.method}</small><div><b>{x.allocation_no}</b><span>{x.description||x.allocation_date}</span></div><div><strong>฿{money.format(Number(x.source_amount))}</strong>{x.status==="DRAFT"?<form action={postCostAllocation}><input type="hidden" name="locale" value={locale}/><input type="hidden" name="project_id" value={id}/><input type="hidden" name="allocation_run_id" value={x.id}/><button>POST 100%</button></form>:<span>{x.status}</span>}</div></div>)}</section><div className={styles.grid}><section className={styles.card}><div className={styles.head}><b>{en?"Development Cost Plan":"แผนต้นทุนโครงการ"}</b><span>BUDGET · FORECAST · VARIANCE</span></div>{(b??[]).map((x:any,i)=><div className={styles.costRow} key={i}><div><small>{x.cost_categories?.category_type}</small><strong>{x.cost_categories?.name}</strong></div><span>฿{money.format(Number(x.budget_amount))}</span><span>฿{money.format(Number(x.forecast_amount))}</span><b className={Number(x.forecast_amount)>Number(x.budget_amount)?styles.negative:""}>{money.format(Number(x.forecast_amount)-Number(x.budget_amount))}</b></div>)}</section>
-<section className={styles.card}><div className={styles.head}><b>{en?"Daily Transactions":"รายการเงินเข้า–ออก"}</b><span>{today}</span></div>{(docs??[]).length?(docs??[]).map(x=><div className={styles.tx} key={x.id}><small>{x.document_type}</small><div><b>{x.document_no}</b><span>{x.counterparty_name||x.description||"—"}</span></div><div><strong className={x.document_type==="RECEIPT"?styles.positive:x.document_type==="PAYMENT"?styles.negative:""}>{x.document_type==="RECEIPT"?"+":x.document_type==="PAYMENT"?"−":""}฿{money.format(Number(x.amount))}</strong>{x.status==="DRAFT"&&["COMMITMENT","AP","AR"].includes(x.document_type)?<form action={approveFinancialDocument}><input type="hidden" name="locale" value={locale}/><input type="hidden" name="project_id" value={id}/><input type="hidden" name="document_id" value={x.id}/><button>APPROVE</button></form>:x.status==="APPROVED"&&["AP","AR"].includes(x.document_type)?<form action={postApprovedFinancialDocument}><input type="hidden" name="locale" value={locale}/><input type="hidden" name="project_id" value={id}/><input type="hidden" name="document_id" value={x.id}/><button>POST GL</button></form>:x.status==="DRAFT"&&["PAYMENT","RECEIPT"].includes(x.document_type)?<form action={postFinancialDocument}><input type="hidden" name="locale" value={locale}/><input type="hidden" name="project_id" value={id}/><input type="hidden" name="document_id" value={x.id}/><button>POST</button></form>:<span>{x.status}{["AP","AR"].includes(x.document_type)?" · OUT ฿"+money.format(Math.max(0,Number(x.amount)-Number(x.settled_amount||0))):""}</span>}</div></div>):<div className={styles.empty}>{en?"No posted transactions":"ยังไม่มีรายการที่ Post"}</div>}</section></div></div></main>}
-function K({l,v,cls=""}:{l:string,v:string,cls?:string}){return <article><small>{l}</small><b className={cls}>{v}</b></article>}
+import { FileText } from "lucide-react";
+import { getSession } from "@/lib/auth";
+import { resolveLocale } from "@/lib/i18n";
+import { label } from "@/lib/i18n/label";
+import { formatDate, formatMoney, formatMoneyCompact, toNumber, today } from "@/lib/format";
+import { toneOf } from "@/lib/status";
+import { Kpi, KpiStrip } from "@/components/ui/kpi";
+import { Panel } from "@/components/ui/panel";
+import { Table, TD, TFoot, TH, THead, TR } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Tabs } from "@/components/ui/tabs";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Sheet, SheetFooter } from "@/components/ui/sheet";
+import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { cn } from "@/components/ui/cn";
+import { DocumentForm } from "@/components/domain/document-form";
+import {
+  approveFinancialDocument,
+  approveProcurementContract,
+  createCostAllocation,
+  createFinancialDocument,
+  createProcurementContract,
+  postApprovedFinancialDocument,
+  postCostAllocation,
+  postFinancialDocument,
+} from "./actions";
+
+type Summary = Record<
+  | "budget"
+  | "forecast"
+  | "opening_cash"
+  | "cash_in"
+  | "cash_out"
+  | "closing_cash"
+  | "ap_outstanding"
+  | "ar_outstanding"
+  | "committed"
+  | "actual"
+  | "customer_deposits",
+  number | string | null
+> & { latest_date: string | null };
+
+const tabs = ["documents", "contracts", "allocations", "budget"] as const;
+type Tab = (typeof tabs)[number];
+const docTypes = ["COMMITMENT", "AP", "AR", "PAYMENT", "RECEIPT"] as const;
+
+export default async function ProjectFinance({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string; id: string }>;
+  searchParams: Promise<{ tab?: string; type?: string; status?: string }>;
+}) {
+  const { locale, t } = await resolveLocale(params);
+  const { id } = await params;
+  const query = await searchParams;
+  const tab: Tab = (tabs as readonly string[]).includes(query.tab ?? "")
+    ? (query.tab as Tab)
+    : "documents";
+  const { supabase } = await getSession(locale);
+  const base = `/${locale}/app/projects/${id}/finance`;
+  const f = t.finance.fields;
+
+  const [
+    { data: budgets },
+    { data: docs },
+    { data: categories },
+    { data: contracts },
+    { data: summaryRows },
+    { data: cashAccounts },
+    { data: allocations },
+  ] = await Promise.all([
+    supabase
+      .from("project_budgets")
+      .select("budget_amount,forecast_amount,cost_categories(code,name,category_type)")
+      .eq("project_id", id),
+    supabase
+      .from("financial_documents")
+      .select(
+        "id,document_no,document_type,document_date,counterparty_name,amount,status,description,settled_amount,source_document_id,cost_category_id,vat_rate,vat_amount,wht_rate,wht_amount,tax_invoice_no",
+      )
+      .eq("project_id", id)
+      .order("document_date", { ascending: false })
+      .limit(500),
+    supabase.from("cost_categories").select("id,code,name").eq("active", true).order("code"),
+    supabase
+      .from("procurement_contracts")
+      .select(
+        "id,contract_no,contract_type,vendor_name,amount,status,contract_date,description,cost_category_id",
+      )
+      .eq("project_id", id)
+      .order("contract_date", { ascending: false })
+      .limit(200),
+    supabase.rpc("get_project_finance_summary_v2", { target_project: id }),
+    supabase
+      .from("cash_accounts")
+      .select("id,code,name,account_kind")
+      .eq("active", true)
+      .order("code"),
+    supabase
+      .from("cost_allocation_runs")
+      .select("id,allocation_no,allocation_date,method,source_amount,status,description")
+      .eq("project_id", id)
+      .order("allocation_date", { ascending: false })
+      .limit(100),
+  ]);
+
+  const s = (summaryRows?.[0] ?? null) as Summary | null;
+  const budget = toNumber(s?.budget);
+  const actual = toNumber(s?.actual);
+  const allDocs = docs ?? [];
+  const categoryName = new Map((categories ?? []).map((c) => [c.id, `${c.code} · ${c.name}`]));
+  const outstanding = (d: { amount: unknown; settled_amount: unknown }) =>
+    Math.max(0, toNumber(d.amount) - toNumber(d.settled_amount));
+  const openInvoices = allDocs
+    .filter(
+      (d) =>
+        ["AP", "AR"].includes(d.document_type) &&
+        ["APPROVED", "POSTED"].includes(d.status) &&
+        outstanding(d) > 0,
+    )
+    .map((d) => ({
+      id: d.id,
+      type: d.document_type,
+      label: `${d.document_no} · ${d.counterparty_name ?? "—"} · ${formatMoney(locale, outstanding(d))}`,
+    }));
+  const filteredDocs = allDocs.filter(
+    (d) =>
+      (!query.type || d.document_type === query.type) &&
+      (!query.status || d.status === query.status),
+  );
+  const hiddenBase = <Hidden values={{ locale, project_id: id }} />;
+
+  const counts: Record<Tab, number> = {
+    documents: allDocs.length,
+    contracts: (contracts ?? []).length,
+    allocations: (allocations ?? []).length,
+    budget: (budgets ?? []).length,
+  };
+
+  return (
+    <div className="space-y-4">
+      <KpiStrip>
+        <Kpi
+          label={t.finance.kpi.budget}
+          value={formatMoneyCompact(locale, budget)}
+          sub={`${t.finance.kpi.forecast} ${formatMoneyCompact(locale, s?.forecast)}`}
+        />
+        <Kpi
+          label={t.finance.kpi.actual}
+          value={formatMoneyCompact(locale, actual)}
+          sub={`${t.finance.kpi.remaining} ${formatMoneyCompact(locale, budget - actual)}`}
+          tone={budget && actual > budget ? "negative" : "default"}
+        />
+        <Kpi label={t.finance.kpi.committed} value={formatMoneyCompact(locale, s?.committed)} />
+        <Kpi
+          label={t.finance.kpi.closingCash}
+          value={formatMoneyCompact(locale, s?.closing_cash)}
+          sub={`${t.finance.kpi.cashIn} ${formatMoneyCompact(locale, s?.cash_in)} · ${t.finance.kpi.cashOut} ${formatMoneyCompact(locale, s?.cash_out)}`}
+          tone={toNumber(s?.closing_cash) < 0 ? "negative" : "positive"}
+        />
+        <Kpi
+          label={t.finance.kpi.ar}
+          value={formatMoneyCompact(locale, s?.ar_outstanding)}
+          sub={`${t.finance.kpi.deposits} ${formatMoneyCompact(locale, s?.customer_deposits)}`}
+        />
+        <Kpi
+          label={t.finance.kpi.ap}
+          value={formatMoneyCompact(locale, s?.ap_outstanding)}
+          tone={toNumber(s?.ap_outstanding) > 0 ? "negative" : "default"}
+        />
+      </KpiStrip>
+
+      <Panel>
+        <div className="flex flex-wrap items-end justify-between gap-2 px-4 pt-2">
+          <Tabs
+            active={tab}
+            items={tabs.map((k) => ({
+              key: k,
+              label: t.finance.tabs[k],
+              href: `${base}?tab=${k}`,
+              count: counts[k],
+            }))}
+          />
+          <div className="pb-2">
+            {tab === "documents" ? (
+              <Sheet title={t.finance.newDocument} triggerLabel={t.finance.newDocument}>
+                <DocumentForm
+                  t={{ finance: t.finance, status: t.status, common: t.common }}
+                  locale={locale}
+                  projectId={id}
+                  action={createFinancialDocument}
+                  categories={(categories ?? []).map((c) => ({
+                    id: c.id,
+                    label: `${c.code} · ${c.name}`,
+                  }))}
+                  cashAccounts={(cashAccounts ?? []).map((c) => ({
+                    id: c.id,
+                    label: `${c.code} · ${c.name} (${c.account_kind})`,
+                  }))}
+                  openInvoices={openInvoices}
+                  defaultDate={today()}
+                />
+              </Sheet>
+            ) : tab === "contracts" ? (
+              <Sheet title={t.finance.newContract} triggerLabel={t.finance.newContract}>
+                <form action={createProcurementContract} className="space-y-3">
+                  {hiddenBase}
+                  <FormGrid>
+                    <Field label={f.contractType}>
+                      <Select name="contract_type" defaultValue="PO">
+                        <option value="PO">{t.status.contractType.PO}</option>
+                        <option value="CONTRACT">{t.status.contractType.CONTRACT}</option>
+                      </Select>
+                    </Field>
+                    <Field label={f.contractDate}>
+                      <Input name="contract_date" type="date" defaultValue={today()} />
+                    </Field>
+                  </FormGrid>
+                  <Field label={f.vendor} required>
+                    <Input name="vendor_name" required />
+                  </Field>
+                  <Field label={f.costCategory} required>
+                    <Select name="cost_category_id" required defaultValue="">
+                      <option value="" disabled>
+                        —
+                      </option>
+                      {(categories ?? []).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} · {c.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label={`${f.amount} (THB)`} required>
+                    <Input name="amount" type="number" min="0.01" step="0.01" required />
+                  </Field>
+                  <Field label={t.common.description}>
+                    <Textarea name="description" />
+                  </Field>
+                  <SheetFooter>
+                    <SubmitButton>{t.common.save}</SubmitButton>
+                  </SheetFooter>
+                </form>
+              </Sheet>
+            ) : tab === "allocations" ? (
+              <Sheet title={t.finance.newAllocation} triggerLabel={t.finance.newAllocation}>
+                <form action={createCostAllocation} className="space-y-3">
+                  {hiddenBase}
+                  <Field label={f.method}>
+                    <Select name="method" defaultValue="LAND_AREA">
+                      {(["LAND_AREA", "GFA", "SALES_VALUE"] as const).map((m) => (
+                        <option key={m} value={m}>
+                          {t.status.allocationMethod[m]}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label={f.sourceDocument}>
+                    <Select name="source_document_id" defaultValue="">
+                      <option value="">{f.noSource}</option>
+                      {allDocs
+                        .filter(
+                          (d) =>
+                            ["AP", "PAYMENT"].includes(d.document_type) && d.status === "POSTED",
+                        )
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.document_no} · {formatMoney(locale, d.amount)}
+                          </option>
+                        ))}
+                    </Select>
+                  </Field>
+                  <Field label={`${f.sourceAmount} (THB)`} required>
+                    <Input name="source_amount" type="number" min="0.01" step="0.01" required />
+                  </Field>
+                  <Field label={t.common.description}>
+                    <Textarea name="description" />
+                  </Field>
+                  <SheetFooter>
+                    <SubmitButton>{t.common.save}</SubmitButton>
+                  </SheetFooter>
+                </form>
+              </Sheet>
+            ) : null}
+          </div>
+        </div>
+
+        {tab === "documents" ? (
+          <>
+            <form className="flex flex-wrap items-center gap-2 border-b border-line bg-subtle px-4 py-2">
+              <input type="hidden" name="tab" value="documents" />
+              <Select name="type" defaultValue={query.type ?? ""} className="w-48">
+                <option value="">
+                  {f.documentType}: {t.common.all}
+                </option>
+                {docTypes.map((x) => (
+                  <option key={x} value={x}>
+                    {t.status.documentType[x]}
+                  </option>
+                ))}
+              </Select>
+              <Select name="status" defaultValue={query.status ?? ""} className="w-40">
+                <option value="">
+                  {t.common.status}: {t.common.all}
+                </option>
+                {(["DRAFT", "APPROVED", "POSTED", "VOID"] as const).map((x) => (
+                  <option key={x} value={x}>
+                    {t.status.document[x]}
+                  </option>
+                ))}
+              </Select>
+              <button
+                type="submit"
+                className="h-8 rounded-md border border-line-strong bg-surface px-3 text-[13px] font-medium hover:bg-subtle"
+              >
+                {t.common.filter}
+              </button>
+              <span className="ml-auto text-2xs text-muted num">
+                {filteredDocs.length} / {allDocs.length} {t.common.rows}
+              </span>
+            </form>
+            {filteredDocs.length ? (
+              <Table>
+                <THead>
+                  <tr>
+                    <TH>{f.documentDate}</TH>
+                    <TH>{f.documentNo}</TH>
+                    <TH>{f.documentType}</TH>
+                    <TH>{f.counterparty}</TH>
+                    <TH>{f.costCategory}</TH>
+                    <TH align="right">{f.amount}</TH>
+                    <TH align="right">VAT / WHT</TH>
+                    <TH align="right">{t.finance.outstanding}</TH>
+                    <TH>{t.common.status}</TH>
+                    <TH align="right">{t.common.actions}</TH>
+                  </tr>
+                </THead>
+                <tbody>
+                  {filteredDocs.map((d) => {
+                    const isInvoice = ["AP", "AR"].includes(d.document_type);
+                    const sign =
+                      d.document_type === "RECEIPT"
+                        ? "+"
+                        : d.document_type === "PAYMENT"
+                          ? "−"
+                          : "";
+                    const actionForm = (
+                      action: (fd: FormData) => Promise<void>,
+                      text: string,
+                      variant: "primary" | "success",
+                    ) => (
+                      <form action={action} className="inline">
+                        <Hidden values={{ locale, project_id: id, document_id: d.id }} />
+                        <SubmitButton size="xs" variant={variant}>
+                          {text}
+                        </SubmitButton>
+                      </form>
+                    );
+                    return (
+                      <TR key={d.id}>
+                        <TD className="text-muted">{formatDate(locale, d.document_date)}</TD>
+                        <TD>
+                          <span className="font-mono text-2xs font-medium">{d.document_no}</span>
+                          {d.description ? (
+                            <p className="max-w-56 truncate text-2xs text-muted">{d.description}</p>
+                          ) : null}
+                        </TD>
+                        <TD>{label(t.status.documentType, d.document_type)}</TD>
+                        <TD className="max-w-44 truncate">{d.counterparty_name ?? "—"}</TD>
+                        <TD className="max-w-44 truncate text-muted">
+                          {d.cost_category_id ? categoryName.get(d.cost_category_id) : "—"}
+                        </TD>
+                        <TD
+                          align="right"
+                          className={cn(
+                            "font-semibold",
+                            sign === "+" && "text-emerald-700",
+                            sign === "−" && "text-red-700",
+                          )}
+                        >
+                          {sign}
+                          {formatMoney(locale, d.amount)}
+                        </TD>
+                        <TD align="right" className="text-2xs text-muted">
+                          {toNumber(d.vat_amount)
+                            ? `VAT ${formatMoney(locale, d.vat_amount)}`
+                            : toNumber(d.wht_amount)
+                              ? `WHT ${formatMoney(locale, d.wht_amount)}`
+                              : "—"}
+                        </TD>
+                        <TD
+                          align="right"
+                          className={cn(isInvoice && outstanding(d) > 0 && "text-amber-700")}
+                        >
+                          {isInvoice ? formatMoney(locale, outstanding(d)) : "—"}
+                        </TD>
+                        <TD>
+                          <Badge tone={toneOf(d.status)}>
+                            {label(t.status.document, d.status)}
+                          </Badge>
+                        </TD>
+                        <TD align="right">
+                          {d.status === "DRAFT" &&
+                          ["COMMITMENT", "AP", "AR"].includes(d.document_type)
+                            ? actionForm(approveFinancialDocument, t.finance.approve, "primary")
+                            : d.status === "APPROVED" && isInvoice
+                              ? actionForm(postApprovedFinancialDocument, t.finance.post, "success")
+                              : d.status === "DRAFT" &&
+                                  ["PAYMENT", "RECEIPT"].includes(d.document_type)
+                                ? actionForm(postFinancialDocument, t.finance.post, "success")
+                                : null}
+                        </TD>
+                      </TR>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            ) : (
+              <EmptyState
+                icon={<FileText />}
+                title={allDocs.length ? t.common.noResults : t.finance.noDocuments}
+              />
+            )}
+          </>
+        ) : null}
+
+        {tab === "contracts" ? (
+          contracts?.length ? (
+            <Table>
+              <THead>
+                <tr>
+                  <TH>{f.contractDate}</TH>
+                  <TH>{f.contractNo}</TH>
+                  <TH>{f.contractType}</TH>
+                  <TH>{f.vendor}</TH>
+                  <TH>{f.costCategory}</TH>
+                  <TH align="right">{f.amount}</TH>
+                  <TH>{t.common.status}</TH>
+                  <TH align="right">{t.common.actions}</TH>
+                </tr>
+              </THead>
+              <tbody>
+                {contracts.map((c) => (
+                  <TR key={c.id}>
+                    <TD className="text-muted">{formatDate(locale, c.contract_date)}</TD>
+                    <TD>
+                      <span className="font-mono text-2xs font-medium">{c.contract_no}</span>
+                      {c.description ? (
+                        <p className="max-w-56 truncate text-2xs text-muted">{c.description}</p>
+                      ) : null}
+                    </TD>
+                    <TD>{label(t.status.contractType, c.contract_type)}</TD>
+                    <TD className="max-w-48 truncate font-medium">{c.vendor_name}</TD>
+                    <TD className="max-w-44 truncate text-muted">
+                      {c.cost_category_id ? categoryName.get(c.cost_category_id) : "—"}
+                    </TD>
+                    <TD align="right" className="font-semibold">
+                      {formatMoney(locale, c.amount)}
+                    </TD>
+                    <TD>
+                      <Badge tone={toneOf(c.status)}>{label(t.status.document, c.status)}</Badge>
+                    </TD>
+                    <TD align="right">
+                      {c.status === "DRAFT" ? (
+                        <form action={approveProcurementContract} className="inline">
+                          <Hidden values={{ locale, project_id: id, contract_id: c.id }} />
+                          <SubmitButton size="xs">{t.finance.approve}</SubmitButton>
+                        </form>
+                      ) : null}
+                    </TD>
+                  </TR>
+                ))}
+              </tbody>
+              <TFoot>
+                <tr>
+                  <TD colSpan={5}>{t.common.total}</TD>
+                  <TD align="right">
+                    {formatMoney(
+                      locale,
+                      contracts.reduce((a, c) => a + toNumber(c.amount), 0),
+                    )}
+                  </TD>
+                  <TD colSpan={2} />
+                </tr>
+              </TFoot>
+            </Table>
+          ) : (
+            <EmptyState icon={<FileText />} title={t.finance.noContracts} />
+          )
+        ) : null}
+
+        {tab === "allocations" ? (
+          allocations?.length ? (
+            <Table>
+              <THead>
+                <tr>
+                  <TH>{t.common.date}</TH>
+                  <TH>{f.allocationNo}</TH>
+                  <TH>{f.method}</TH>
+                  <TH>{t.common.description}</TH>
+                  <TH align="right">{f.sourceAmount}</TH>
+                  <TH>{t.common.status}</TH>
+                  <TH align="right">{t.common.actions}</TH>
+                </tr>
+              </THead>
+              <tbody>
+                {allocations.map((a) => (
+                  <TR key={a.id}>
+                    <TD className="text-muted">{formatDate(locale, a.allocation_date)}</TD>
+                    <TD className="font-mono text-2xs font-medium">{a.allocation_no}</TD>
+                    <TD>{label(t.status.allocationMethod, a.method)}</TD>
+                    <TD className="max-w-64 truncate text-muted">{a.description || "—"}</TD>
+                    <TD align="right" className="font-semibold">
+                      {formatMoney(locale, a.source_amount)}
+                    </TD>
+                    <TD>
+                      <Badge tone={toneOf(a.status)}>{label(t.status.document, a.status)}</Badge>
+                    </TD>
+                    <TD align="right">
+                      {a.status === "DRAFT" ? (
+                        <form action={postCostAllocation} className="inline">
+                          <Hidden values={{ locale, project_id: id, allocation_run_id: a.id }} />
+                          <SubmitButton size="xs" variant="success">
+                            {t.finance.post}
+                          </SubmitButton>
+                        </form>
+                      ) : null}
+                    </TD>
+                  </TR>
+                ))}
+              </tbody>
+            </Table>
+          ) : (
+            <EmptyState icon={<FileText />} title={t.finance.noAllocations} />
+          )
+        ) : null}
+
+        {tab === "budget" ? (
+          budgets?.length ? (
+            <Table>
+              <THead>
+                <tr>
+                  <TH>{t.common.code}</TH>
+                  <TH>{f.category}</TH>
+                  <TH>{f.categoryType}</TH>
+                  <TH align="right">{t.finance.kpi.budget}</TH>
+                  <TH align="right">{t.finance.kpi.forecast}</TH>
+                  <TH align="right">Δ</TH>
+                </tr>
+              </THead>
+              <tbody>
+                {budgets.map((b, i) => {
+                  const cat = Array.isArray(b.cost_categories)
+                    ? b.cost_categories[0]
+                    : b.cost_categories;
+                  const delta = toNumber(b.budget_amount) - toNumber(b.forecast_amount);
+                  return (
+                    <TR key={i}>
+                      <TD className="font-mono text-2xs">{cat?.code ?? "—"}</TD>
+                      <TD className="font-medium">{cat?.name ?? "—"}</TD>
+                      <TD className="text-muted">{cat?.category_type ?? "—"}</TD>
+                      <TD align="right">{formatMoney(locale, b.budget_amount)}</TD>
+                      <TD align="right">{formatMoney(locale, b.forecast_amount)}</TD>
+                      <TD
+                        align="right"
+                        className={cn(delta < 0 ? "text-red-700" : "text-emerald-700")}
+                      >
+                        {formatMoney(locale, delta)}
+                      </TD>
+                    </TR>
+                  );
+                })}
+              </tbody>
+              <TFoot>
+                <tr>
+                  <TD colSpan={3}>{t.common.total}</TD>
+                  <TD align="right">
+                    {formatMoney(
+                      locale,
+                      budgets.reduce((a, b) => a + toNumber(b.budget_amount), 0),
+                    )}
+                  </TD>
+                  <TD align="right">
+                    {formatMoney(
+                      locale,
+                      budgets.reduce((a, b) => a + toNumber(b.forecast_amount), 0),
+                    )}
+                  </TD>
+                  <TD align="right">
+                    {formatMoney(
+                      locale,
+                      budgets.reduce(
+                        (a, b) => a + toNumber(b.budget_amount) - toNumber(b.forecast_amount),
+                        0,
+                      ),
+                    )}
+                  </TD>
+                </tr>
+              </TFoot>
+            </Table>
+          ) : (
+            <EmptyState icon={<FileText />} title={t.finance.noBudget} />
+          )
+        ) : null}
+      </Panel>
+    </div>
+  );
+}
