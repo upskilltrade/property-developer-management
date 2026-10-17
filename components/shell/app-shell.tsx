@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  Bell,
   Building2,
   ChevronDown,
   ChevronsUpDown,
@@ -40,6 +41,7 @@ const icons = {
   investor: PieChart,
   contractor: HardHat,
   customer: Home,
+  bell: Bell,
 } as const;
 
 export type NavIcon = keyof typeof icons;
@@ -67,6 +69,7 @@ export function AppShell({
   labels,
   user,
   signOut,
+  notifications,
   children,
 }: {
   locale: string;
@@ -75,6 +78,7 @@ export function AppShell({
   labels: Labels;
   user: { name: string; email: string; roles: string[] };
   signOut: (fd: FormData) => Promise<void>;
+  notifications?: { href: string; unread: number; label: string };
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -204,6 +208,20 @@ export function AppShell({
             />
           ) : null}
           <div className="ml-auto flex items-center gap-1">
+            {notifications ? (
+              <Link
+                href={notifications.href}
+                aria-label={notifications.label}
+                className="relative grid size-8 place-items-center rounded-md text-ink-2 hover:bg-slate-100"
+              >
+                <Bell className="size-4" />
+                {notifications.unread ? (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] leading-4 font-semibold text-white">
+                    {notifications.unread > 99 ? "99+" : notifications.unread}
+                  </span>
+                ) : null}
+              </Link>
+            ) : null}
             <LocaleSwitch locale={locale} pathname={pathname} label={labels.language} />
             <UserMenu user={user} locale={locale} signOut={signOut} label={labels.signOut} />
           </div>
