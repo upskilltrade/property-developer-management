@@ -64,6 +64,7 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
     { data: openDocs },
     { data: openContracts },
     { data: scheduleRows },
+    { data: evidenceRows },
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -88,6 +89,12 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
       .eq("status", "DRAFT")
       .limit(50),
     supabase.from("schedule_activities").select(activityColumns).limit(5000),
+    supabase
+      .from("payment_evidence")
+      .select("id,project_id,unit_id,amount,status")
+      .eq("status", "SUBMITTED")
+      .order("submitted_at")
+      .limit(50),
   ]);
 
   const allUnits = units ?? [];
@@ -127,6 +134,8 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
       d.status === "DRAFT" || (d.status === "APPROVED" && ["AP", "AR"].includes(d.document_type)),
   );
   const pendingContracts = openContracts ?? [];
+  const pendingEvidence = evidenceRows ?? [];
+  const pendingCount = pendingDocs.length + pendingContracts.length + pendingEvidence.length;
   const projectById = new Map((projects ?? []).map((p) => [p.id, p]));
 
   const rows = (projects ?? []).map((p) => {
@@ -287,15 +296,20 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
         <div className="space-y-4">
           <Panel
             title={t.dashboard.pending}
-            actions={
-              <Badge tone={pendingDocs.length + pendingContracts.length ? "warning" : "neutral"}>
-                {pendingDocs.length + pendingContracts.length}
-              </Badge>
-            }
+            actions={<Badge tone={pendingCount ? "warning" : "neutral"}>{pendingCount}</Badge>}
           >
-            {pendingDocs.length + pendingContracts.length ? (
+            {pendingCount ? (
               <ul className="divide-y divide-line">
                 {[
+                  ...pendingEvidence.slice(0, 6).map((e) => ({
+                    id: e.id,
+                    href: `${base}/projects/${e.project_id}/units/${e.unit_id}/payments`,
+                    no: unitCodeById.get(e.unit_id) ?? "",
+                    kind: t.payments.evidence,
+                    project: projectById.get(e.project_id)?.code,
+                    amount: e.amount,
+                    statusText: label(t.status.evidence, e.status),
+                  })),
                   ...pendingDocs.slice(0, 6).map((d) => ({
                     id: d.id,
                     href: `${base}/projects/${d.project_id}/finance`,
@@ -303,7 +317,7 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
                     kind: label(t.status.documentType, d.document_type),
                     project: projectById.get(d.project_id)?.code,
                     amount: d.amount,
-                    status: d.status,
+                    statusText: label(t.status.document, d.status),
                   })),
                   ...pendingContracts.slice(0, 4).map((c) => ({
                     id: c.id,
@@ -312,7 +326,7 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
                     kind: c.vendor_name,
                     project: projectById.get(c.project_id)?.code,
                     amount: c.amount,
-                    status: c.status,
+                    statusText: label(t.status.document, c.status),
                   })),
                 ].map((item) => (
                   <li key={item.id}>
@@ -327,7 +341,7 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
                           {item.kind}
                         </p>
                         <p className="text-2xs text-muted">
-                          {item.project} · {label(t.status.document, item.status)}
+                          {item.project} · {item.statusText}
                         </p>
                       </div>
                       <span className="text-[13px] font-semibold num">

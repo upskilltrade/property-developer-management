@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarRange, Pencil } from "lucide-react";
+import { ArrowLeft, CalendarRange, Pencil, Wallet } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -78,8 +78,15 @@ export default async function Unit360({
           </div>
         </div>
         <Link
-          href={`/${locale}/app/projects/${id}/units/${unitId}/schedule`}
+          href={`/${locale}/app/projects/${id}/units/${unitId}/payments`}
           className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 text-[13px] font-medium hover:bg-subtle"
+        >
+          <Wallet className="size-4" />
+          {t.nav.payments}
+        </Link>
+        <Link
+          href={`/${locale}/app/projects/${id}/units/${unitId}/schedule`}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 text-[13px] font-medium hover:bg-subtle"
         >
           <CalendarRange className="size-4" />
           {t.nav.schedule}

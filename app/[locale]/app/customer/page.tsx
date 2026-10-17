@@ -10,6 +10,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/components/ui/cn";
 import { PortalPlaceholder } from "@/components/domain/portal-placeholder";
 import { PhotoThumb } from "@/components/domain/photo-thumb";
+import { CustomerPayments, type CustomerUnitPayments } from "@/components/domain/customer-payments";
+import { submitPaymentEvidence } from "./actions";
 
 type Named = { name_th: string; name_en: string };
 type PortalUnit = {
@@ -41,7 +43,13 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
   const { locale, t } = await resolveLocale(params);
   const { supabase } = await getSession(locale);
   const c = t.portal.customer;
-  const { data } = await supabase.rpc("get_customer_portal");
+  const [{ data }, { data: paymentData }] = await Promise.all([
+    supabase.rpc("get_customer_portal"),
+    supabase.rpc("get_customer_payments"),
+  ]);
+  const paymentsByUnit = new Map(
+    ((paymentData ?? []) as CustomerUnitPayments[]).map((x) => [x.unit_id, x]),
+  );
   const units = (data ?? []) as PortalUnit[];
 
   if (!units.length) {
@@ -121,6 +129,13 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
                 ) : null}
               </div>
             </div>
+
+            <CustomerPayments
+              data={paymentsByUnit.get(u.unit_id)}
+              locale={locale}
+              t={t}
+              action={submitPaymentEvidence}
+            />
 
             <Panel title={c.stages}>
               <ol className="divide-y divide-line">
