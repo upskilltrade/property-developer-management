@@ -52,7 +52,8 @@ export function Sheet({
           if (e.target === ref.current) ref.current.close();
         }}
         className={cn(
-          "fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-full border-l border-line bg-surface p-0 text-ink shadow-2xl",
+          // text-left: a sheet opened from a right-aligned table cell must not inherit its alignment.
+          "fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-full border-l border-line bg-surface p-0 text-left text-ink shadow-2xl",
           "backdrop:bg-slate-900/40 backdrop:backdrop-blur-[1px]",
           width === "md" ? "max-w-md" : "max-w-2xl",
         )}

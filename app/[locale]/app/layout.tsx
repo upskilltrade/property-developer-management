@@ -82,6 +82,11 @@ export default async function AppLayout({
             error: t.flash.error,
             invalid: t.flash.invalid,
             permission: t.flash.permission,
+            errors: {
+              selfVerify: t.flash.selfVerify,
+              photosRequired: t.flash.photosRequired,
+              hasSchedule: t.flash.hasSchedule,
+            },
           }}
         />
       </Suspense>

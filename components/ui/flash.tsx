@@ -5,7 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, X } from "lucide-react";
 import { cn } from "./cn";
 
-type Messages = { saved: string; error: string; invalid: string; permission: string };
+type Messages = {
+  saved: string;
+  error: string;
+  invalid: string;
+  permission: string;
+  /** Messages for specific ?error= keys, e.g. { selfVerify: "..." }. */
+  errors?: Record<string, string>;
+};
 
 function stripFlashParams() {
   const url = new URL(window.location.href);
@@ -44,11 +51,13 @@ export function Flash({ messages }: { messages: Messages }) {
   const ok = Boolean(saved);
   const text = ok
     ? messages.saved
-    : error === "invalid"
-      ? messages.invalid
-      : error === "permission"
-        ? messages.permission
-        : messages.error;
+    : error && messages.errors?.[error]
+      ? messages.errors[error]
+      : error === "invalid"
+        ? messages.invalid
+        : error === "permission"
+          ? messages.permission
+          : messages.error;
 
   return (
     <div

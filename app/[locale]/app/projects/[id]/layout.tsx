@@ -62,7 +62,13 @@ export default async function ProjectLayout({
       <div className="mb-4">
         <ProjectTabs
           base={base}
-          labels={{ overview: t.nav.overview, setup: t.nav.setup, finance: t.nav.projectFinance }}
+          labels={{
+            overview: t.nav.overview,
+            schedule: t.nav.schedule,
+            photos: t.nav.photos,
+            setup: t.nav.setup,
+            finance: t.nav.projectFinance,
+          }}
         />
       </div>
       {children}
