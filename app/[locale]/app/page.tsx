@@ -97,6 +97,14 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
       .limit(50),
   ]);
 
+  // Finance figures are only readable with finance access; hide them rather than show zeros.
+  const financeFlags = await Promise.all(
+    (projects ?? []).map((p) =>
+      supabase.rpc("can_view_finance", { target_project: p.id }).then((r) => r.data === true),
+    ),
+  );
+  const showFinance = financeFlags.some(Boolean);
+
   const allUnits = units ?? [];
   const portfolio = (portfolioRows?.[0] ?? null) as Portfolio | null;
   const totalUnits = toNumber(portfolio?.total_units ?? allUnits.length);
@@ -187,6 +195,12 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
       <PageHeader
         title={t.dashboard.title}
         subtitle={`${t.dashboard.greeting} ${displayName} · ${t.dashboard.subtitle}`}
+        actions={
+          <ButtonLink href={`${base}/control`} variant="secondary" size="sm">
+            {t.nav.control}
+            <ArrowUpRight />
+          </ButtonLink>
+        }
       />
 
       <KpiStrip>
@@ -219,13 +233,22 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
           sub={formatMoney(locale, listedValue)}
           icon={<CircleDollarSign />}
         />
-        <Kpi
-          label={t.dashboard.kpi.netCash}
-          value={formatMoneyCompact(locale, netCash)}
-          sub={`${t.dashboard.kpi.cashIn} ${formatMoneyCompact(locale, cashIn)} · ${t.dashboard.kpi.cashOut} ${formatMoneyCompact(locale, cashOut)}`}
-          tone={netCash < 0 ? "negative" : "positive"}
-          icon={<Wallet />}
-        />
+        {showFinance ? (
+          <Kpi
+            label={t.dashboard.kpi.netCash}
+            value={formatMoneyCompact(locale, netCash)}
+            sub={`${t.dashboard.kpi.cashIn} ${formatMoneyCompact(locale, cashIn)} · ${t.dashboard.kpi.cashOut} ${formatMoneyCompact(locale, cashOut)}`}
+            tone={netCash < 0 ? "negative" : "positive"}
+            icon={<Wallet />}
+          />
+        ) : (
+          <Kpi
+            label={t.control.kpi.approvals}
+            value={formatNumber(locale, pendingCount)}
+            icon={<FileClock />}
+            href={`${base}/control?view=approvals`}
+          />
+        )}
       </KpiStrip>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_340px]">
@@ -358,23 +381,25 @@ export default async function Dashboard({ params }: { params: Promise<{ locale: 
             )}
           </Panel>
 
-          <Panel title={t.dashboard.finance}>
-            <DetailList
-              items={[
-                {
-                  label: t.dashboard.kpi.cashIn,
-                  value: <span className="text-emerald-700">{formatMoney(locale, cashIn)}</span>,
-                },
-                {
-                  label: t.dashboard.kpi.cashOut,
-                  value: <span className="text-red-700">{formatMoney(locale, cashOut)}</span>,
-                },
-                { label: t.dashboard.kpi.ar, value: formatMoney(locale, ar) },
-                { label: t.dashboard.kpi.ap, value: formatMoney(locale, ap) },
-                { label: t.dashboard.kpi.committed, value: formatMoney(locale, committed) },
-              ]}
-            />
-          </Panel>
+          {showFinance ? (
+            <Panel title={t.dashboard.finance}>
+              <DetailList
+                items={[
+                  {
+                    label: t.dashboard.kpi.cashIn,
+                    value: <span className="text-emerald-700">{formatMoney(locale, cashIn)}</span>,
+                  },
+                  {
+                    label: t.dashboard.kpi.cashOut,
+                    value: <span className="text-red-700">{formatMoney(locale, cashOut)}</span>,
+                  },
+                  { label: t.dashboard.kpi.ar, value: formatMoney(locale, ar) },
+                  { label: t.dashboard.kpi.ap, value: formatMoney(locale, ap) },
+                  { label: t.dashboard.kpi.committed, value: formatMoney(locale, committed) },
+                ]}
+              />
+            </Panel>
+          ) : null}
 
           <Panel title={t.dashboard.inventory} bodyClassName="space-y-3 p-4">
             <InventoryBar
