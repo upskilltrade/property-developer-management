@@ -27,6 +27,7 @@ export default async function AppLayout({
       items: [
         { label: t.nav.dashboard, href: base, icon: "dashboard", exact: true },
         { label: t.nav.projects, href: `${base}/projects`, icon: "projects", exact: true },
+        { label: t.nav.sales, href: `${base}/sales`, icon: "sales" },
         { label: t.nav.finance, href: `${base}/finance`, icon: "finance" },
       ],
     });
@@ -91,6 +92,12 @@ export default async function AppLayout({
               scheduleHasPayments: t.flash.scheduleHasPayments,
               selfVerifyPayment: t.flash.selfVerifyPayment,
               evidenceRequired: t.flash.evidenceRequired,
+              unitUnavailable: t.flash.unitUnavailable,
+              discountReason: t.flash.discountReason,
+              leadClosed: t.flash.leadClosed,
+              selfApprove: t.flash.selfApprove,
+              bookingHasPayments: t.flash.bookingHasPayments,
+              contactRequired: t.flash.contactRequired,
             },
           }}
         />

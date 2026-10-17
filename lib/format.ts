@@ -63,3 +63,18 @@ export function formatMonth(locale: Locale, value: string | null | undefined) {
     date,
   );
 }
+
+/** Date and time in the site timezone (Bangkok), e.g. viewings and hold expiries. */
+export function formatDateTime(locale: Locale, value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  }).format(date);
+}
