@@ -33,7 +33,9 @@ create policy roles_custom_access_manager on public.roles
     and public.can_manage_access(organization_id));
 
 -- Role permissions: only owners, and only on custom roles. System role permissions come from migrations.
-drop policy if exists "role permissions managed by org managers" on public.role_permissions;
+-- The previous FINANCE_MANAGER-capable policy is neutralised rather than dropped (policies are OR-ed).
+alter policy "role permissions managed by org managers" on public.role_permissions
+  using (false) with check (false);
 create policy role_permissions_custom_access_manager on public.role_permissions
   for all to authenticated
   using (exists(select 1 from public.roles r where r.id = role_id and not r.is_system
@@ -65,8 +67,10 @@ create policy membership_roles_access_manager_write on public.membership_roles
 
 -- Per-person overrides: owners only; the permission must exist in the catalog and a project
 -- scope must belong to the membership's organization.
-drop policy if exists "overrides visible to org managers" on public.membership_permission_overrides;
-drop policy if exists "overrides managed by org managers" on public.membership_permission_overrides;
+alter policy "overrides visible to org managers" on public.membership_permission_overrides
+  using (false);
+alter policy "overrides managed by org managers" on public.membership_permission_overrides
+  using (false) with check (false);
 create policy overrides_access_manager on public.membership_permission_overrides
   for all to authenticated
   using (exists(
