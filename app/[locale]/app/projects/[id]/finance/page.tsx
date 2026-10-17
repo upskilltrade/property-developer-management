@@ -2,7 +2,15 @@ import { FileText } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
-import { formatDate, formatMoney, formatMoneyCompact, toNumber, today } from "@/lib/format";
+import {
+  formatDate,
+  formatMoney,
+  formatMoneyCompact,
+  formatMonth,
+  formatNumber,
+  toNumber,
+  today,
+} from "@/lib/format";
 import { toneOf } from "@/lib/status";
 import { Kpi, KpiStrip } from "@/components/ui/kpi";
 import { Panel } from "@/components/ui/panel";
@@ -24,6 +32,8 @@ import {
   postApprovedFinancialDocument,
   postCostAllocation,
   postFinancialDocument,
+  saveCashflowForecast,
+  saveFeasibility,
 } from "./actions";
 
 type Summary = Record<
@@ -41,7 +51,28 @@ type Summary = Record<
   number | string | null
 > & { latest_date: string | null };
 
-const tabs = ["documents", "contracts", "allocations", "budget"] as const;
+type FeasibilitySummary = Record<
+  | "target_revenue"
+  | "total_projected_cost"
+  | "projected_profit"
+  | "margin_percent"
+  | "forecast_inflow"
+  | "forecast_outflow"
+  | "forecast_net_cash"
+  | "lowest_cumulative_cash"
+  | "funding_required",
+  number | string | null
+>;
+
+const forecastInflows = ["inflow_sales", "inflow_other"] as const;
+const forecastOutflows = [
+  "outflow_land",
+  "outflow_construction",
+  "outflow_operating",
+  "outflow_finance_tax",
+] as const;
+
+const tabs = ["documents", "contracts", "allocations", "budget", "feasibility"] as const;
 type Tab = (typeof tabs)[number];
 const docTypes = ["COMMITMENT", "AP", "AR", "PAYMENT", "RECEIPT"] as const;
 
@@ -70,6 +101,9 @@ export default async function ProjectFinance({
     { data: summaryRows },
     { data: cashAccounts },
     { data: allocations },
+    { data: feasibility },
+    { data: forecastLines },
+    { data: feasibilityRows },
   ] = await Promise.all([
     supabase
       .from("project_budgets")
@@ -104,6 +138,22 @@ export default async function ProjectFinance({
       .eq("project_id", id)
       .order("allocation_date", { ascending: false })
       .limit(100),
+    supabase
+      .from("project_feasibility")
+      .select(
+        "target_revenue,target_cost,financing_cost,tax_transfer_cost,contingency_amount,target_start_date,target_end_date,notes",
+      )
+      .eq("project_id", id)
+      .maybeSingle(),
+    supabase
+      .from("cashflow_forecast_lines")
+      .select(
+        "id,forecast_month,inflow_sales,inflow_other,outflow_land,outflow_construction,outflow_operating,outflow_finance_tax,notes",
+      )
+      .eq("project_id", id)
+      .order("forecast_month", { ascending: true })
+      .limit(120),
+    supabase.rpc("get_project_feasibility_summary", { target_project: id }),
   ]);
 
   const s = (summaryRows?.[0] ?? null) as Summary | null;
@@ -137,7 +187,19 @@ export default async function ProjectFinance({
     contracts: (contracts ?? []).length,
     allocations: (allocations ?? []).length,
     budget: (budgets ?? []).length,
+    feasibility: (forecastLines ?? []).length,
   };
+
+  const fs = (feasibilityRows?.[0] ?? null) as FeasibilitySummary | null;
+  const ff = t.finance.feasibility;
+  const sumOf = (row: Record<string, unknown>, keys: readonly string[]) =>
+    keys.reduce((a, k) => a + toNumber(row[k]), 0);
+  const forecastRows = (forecastLines ?? []).reduce<
+    { line: NonNullable<typeof forecastLines>[number]; net: number; cumulative: number }[]
+  >((rows, line) => {
+    const net = sumOf(line, forecastInflows) - sumOf(line, forecastOutflows);
+    return [...rows, { line, net, cumulative: (rows.at(-1)?.cumulative ?? 0) + net }];
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -277,6 +339,41 @@ export default async function ProjectFinance({
                   </Field>
                   <Field label={t.common.description}>
                     <Textarea name="description" />
+                  </Field>
+                  <SheetFooter>
+                    <SubmitButton>{t.common.save}</SubmitButton>
+                  </SheetFooter>
+                </form>
+              </Sheet>
+            ) : tab === "feasibility" ? (
+              <Sheet title={ff.addMonth} description={ff.addMonthHint} triggerLabel={ff.addMonth}>
+                <form action={saveCashflowForecast} className="space-y-3">
+                  {hiddenBase}
+                  <Field label={ff.month} required>
+                    <Input name="forecast_month" type="month" required />
+                  </Field>
+                  <p className="pt-1 text-2xs font-semibold tracking-wide text-muted uppercase">
+                    {ff.inflow}
+                  </p>
+                  <FormGrid>
+                    {forecastInflows.map((k) => (
+                      <Field key={k} label={ff.lines[k]}>
+                        <Input name={k} type="number" min="0" step="0.01" placeholder="0" />
+                      </Field>
+                    ))}
+                  </FormGrid>
+                  <p className="pt-1 text-2xs font-semibold tracking-wide text-muted uppercase">
+                    {ff.outflow}
+                  </p>
+                  <FormGrid>
+                    {forecastOutflows.map((k) => (
+                      <Field key={k} label={ff.lines[k]}>
+                        <Input name={k} type="number" min="0" step="0.01" placeholder="0" />
+                      </Field>
+                    ))}
+                  </FormGrid>
+                  <Field label={t.common.notes}>
+                    <Input name="notes" />
                   </Field>
                   <SheetFooter>
                     <SubmitButton>{t.common.save}</SubmitButton>
@@ -603,6 +700,174 @@ export default async function ProjectFinance({
           ) : (
             <EmptyState icon={<FileText />} title={t.finance.noBudget} />
           )
+        ) : null}
+
+        {tab === "feasibility" ? (
+          <div className="space-y-4 p-4">
+            <KpiStrip cols={4}>
+              <Kpi
+                label={ff.projectedProfit}
+                value={formatMoneyCompact(locale, fs?.projected_profit)}
+                sub={`${ff.revenue} ${formatMoneyCompact(locale, fs?.target_revenue)} · ${ff.totalCost} ${formatMoneyCompact(locale, fs?.total_projected_cost)}`}
+                tone={toNumber(fs?.projected_profit) < 0 ? "negative" : "positive"}
+              />
+              <Kpi
+                label={ff.margin}
+                value={`${formatNumber(locale, fs?.margin_percent, 2)}%`}
+                tone={toNumber(fs?.margin_percent) < 0 ? "negative" : "positive"}
+              />
+              <Kpi
+                label={ff.forecastNet}
+                value={formatMoneyCompact(locale, fs?.forecast_net_cash)}
+                sub={`${t.finance.kpi.cashIn} ${formatMoneyCompact(locale, fs?.forecast_inflow)} · ${t.finance.kpi.cashOut} ${formatMoneyCompact(locale, fs?.forecast_outflow)}`}
+                tone={toNumber(fs?.forecast_net_cash) < 0 ? "negative" : "positive"}
+              />
+              <Kpi
+                label={ff.fundingRequired}
+                value={formatMoneyCompact(locale, fs?.funding_required)}
+                sub={`${ff.lowestCash} ${formatMoneyCompact(locale, fs?.lowest_cumulative_cash)}`}
+                tone={toNumber(fs?.funding_required) > 0 ? "negative" : "positive"}
+              />
+            </KpiStrip>
+
+            <form
+              action={saveFeasibility}
+              className="space-y-3 rounded-lg border border-line bg-subtle p-4"
+            >
+              {hiddenBase}
+              <div>
+                <h3 className="text-[13px] font-semibold">{ff.assumptions}</h3>
+                <p className="text-2xs text-muted">{ff.assumptionsHint}</p>
+              </div>
+              <FormGrid cols={3}>
+                {(
+                  [
+                    "target_revenue",
+                    "target_cost",
+                    "financing_cost",
+                    "tax_transfer_cost",
+                    "contingency_amount",
+                  ] as const
+                ).map((k) => (
+                  <Field key={k} label={`${ff.fields[k]} (THB)`}>
+                    <Input
+                      name={k}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      defaultValue={feasibility?.[k] ?? 0}
+                    />
+                  </Field>
+                ))}
+                <Field label={ff.fields.target_start_date}>
+                  <Input
+                    name="target_start_date"
+                    type="date"
+                    defaultValue={feasibility?.target_start_date ?? ""}
+                  />
+                </Field>
+                <Field label={ff.fields.target_end_date}>
+                  <Input
+                    name="target_end_date"
+                    type="date"
+                    defaultValue={feasibility?.target_end_date ?? ""}
+                  />
+                </Field>
+                <Field label={t.common.notes} className="sm:col-span-2">
+                  <Input name="notes" defaultValue={feasibility?.notes ?? ""} />
+                </Field>
+              </FormGrid>
+              <div className="flex justify-end">
+                <SubmitButton>{ff.saveAssumptions}</SubmitButton>
+              </div>
+            </form>
+
+            <div className="overflow-hidden rounded-lg border border-line">
+              <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+                <h3 className="text-[13px] font-semibold">{ff.forecastTitle}</h3>
+                <span className="text-2xs text-muted num">
+                  {forecastRows.length} {ff.months}
+                </span>
+              </div>
+              {forecastRows.length ? (
+                <Table>
+                  <THead>
+                    <tr>
+                      <TH>{ff.month}</TH>
+                      {[...forecastInflows, ...forecastOutflows].map((k) => (
+                        <TH key={k} align="right">
+                          {ff.lines[k]}
+                        </TH>
+                      ))}
+                      <TH align="right">{ff.net}</TH>
+                      <TH align="right">{ff.cumulative}</TH>
+                    </tr>
+                  </THead>
+                  <tbody>
+                    {forecastRows.map(({ line, net, cumulative }) => (
+                      <TR key={line.id}>
+                        <TD className="font-medium">
+                          {formatMonth(locale, line.forecast_month)}
+                          {line.notes ? (
+                            <p className="max-w-40 truncate text-2xs font-normal text-muted">
+                              {line.notes}
+                            </p>
+                          ) : null}
+                        </TD>
+                        {forecastInflows.map((k) => (
+                          <TD key={k} align="right" className="text-emerald-700">
+                            {toNumber(line[k]) ? formatMoney(locale, line[k]) : "—"}
+                          </TD>
+                        ))}
+                        {forecastOutflows.map((k) => (
+                          <TD key={k} align="right" className="text-red-700">
+                            {toNumber(line[k]) ? formatMoney(locale, line[k]) : "—"}
+                          </TD>
+                        ))}
+                        <TD
+                          align="right"
+                          className={cn(
+                            "font-semibold",
+                            net < 0 ? "text-red-700" : "text-emerald-700",
+                          )}
+                        >
+                          {formatMoney(locale, net)}
+                        </TD>
+                        <TD
+                          align="right"
+                          className={cn("font-semibold", cumulative < 0 && "text-red-700")}
+                        >
+                          {formatMoney(locale, cumulative)}
+                        </TD>
+                      </TR>
+                    ))}
+                  </tbody>
+                  <TFoot>
+                    <tr>
+                      <TD>{t.common.total}</TD>
+                      {[...forecastInflows, ...forecastOutflows].map((k) => (
+                        <TD key={k} align="right">
+                          {formatMoney(
+                            locale,
+                            forecastRows.reduce((a, r) => a + toNumber(r.line[k]), 0),
+                          )}
+                        </TD>
+                      ))}
+                      <TD align="right">
+                        {formatMoney(
+                          locale,
+                          forecastRows.reduce((a, r) => a + r.net, 0),
+                        )}
+                      </TD>
+                      <TD />
+                    </tr>
+                  </TFoot>
+                </Table>
+              ) : (
+                <EmptyState icon={<FileText />} title={ff.noForecast} />
+              )}
+            </div>
+          </div>
         ) : null}
       </Panel>
     </div>

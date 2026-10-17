@@ -53,3 +53,13 @@ export function formatDate(locale: Locale, value: string | null | undefined) {
 }
 
 export const today = () => new Date().toISOString().slice(0, 10);
+
+/** Month label for a YYYY-MM-DD month start, e.g. "Mar 2027" / "มี.ค. 2570". */
+export function formatMonth(locale: Locale, value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(`${value.slice(0, 7)}-01T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(intlLocale(locale), { month: "short", year: "numeric" }).format(
+    date,
+  );
+}

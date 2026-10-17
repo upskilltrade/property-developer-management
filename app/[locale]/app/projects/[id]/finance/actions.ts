@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formLocale, num, optStr, str, withFlash } from "@/lib/form";
 import { today } from "@/lib/format";
 
-type Tab = "documents" | "contracts" | "allocations";
+type Tab = "documents" | "contracts" | "allocations" | "feasibility";
 
 async function context(fd: FormData, tab: Tab) {
   const locale = formLocale(fd);
@@ -189,4 +189,62 @@ export async function postCostAllocation(fd: FormData) {
   });
   if (error) fail("allocation_post");
   done("allocation_post");
+}
+
+/** Non-negative amount; blank counts as zero. */
+const amountOf = (fd: FormData, key: string) => Math.max(0, num(fd, key) ?? 0);
+
+export async function saveFeasibility(fd: FormData) {
+  const { projectId, supabase, user, fail, done, organizationId } = await context(
+    fd,
+    "feasibility",
+  );
+  const start = optStr(fd, "target_start_date");
+  const end = optStr(fd, "target_end_date");
+  if (start && end && end < start) fail("invalid");
+
+  const { error } = await supabase.from("project_feasibility").upsert(
+    {
+      project_id: projectId,
+      organization_id: await organizationId(),
+      target_revenue: amountOf(fd, "target_revenue"),
+      target_cost: amountOf(fd, "target_cost"),
+      financing_cost: amountOf(fd, "financing_cost"),
+      tax_transfer_cost: amountOf(fd, "tax_transfer_cost"),
+      contingency_amount: amountOf(fd, "contingency_amount"),
+      target_start_date: start,
+      target_end_date: end,
+      notes: str(fd, "notes"),
+      updated_by: user.id,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "project_id" },
+  );
+  if (error) fail("feasibility");
+  done("feasibility");
+}
+
+export async function saveCashflowForecast(fd: FormData) {
+  const { projectId, supabase, fail, done, organizationId } = await context(fd, "feasibility");
+  const month = str(fd, "forecast_month");
+  if (!/^\d{4}-\d{2}$/.test(month)) fail("invalid");
+
+  const { error } = await supabase.from("cashflow_forecast_lines").upsert(
+    {
+      project_id: projectId,
+      organization_id: await organizationId(),
+      forecast_month: `${month}-01`,
+      inflow_sales: amountOf(fd, "inflow_sales"),
+      inflow_other: amountOf(fd, "inflow_other"),
+      outflow_land: amountOf(fd, "outflow_land"),
+      outflow_construction: amountOf(fd, "outflow_construction"),
+      outflow_operating: amountOf(fd, "outflow_operating"),
+      outflow_finance_tax: amountOf(fd, "outflow_finance_tax"),
+      notes: str(fd, "notes"),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "project_id,forecast_month" },
+  );
+  if (error) fail("forecast");
+  done("forecast");
 }
