@@ -87,3 +87,69 @@ export async function decideVariation(fd: FormData) {
   revalidatePath(back);
   redirect(withFlash(back, "saved", "decision"));
 }
+
+/** Homeowner: during customer inspection, report observations and accept the home. */
+export async function reportObservation(fd: FormData) {
+  const locale = formLocale(fd);
+  const back = `/${locale}/app/customer`;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("log_customer_defect", {
+    target_unit: str(fd, "unit_id"),
+    title: str(fd, "title"),
+    description: optStr(fd, "description"),
+    location: optStr(fd, "location"),
+  });
+  if (error) redirect(withFlash(back, "error", "invalid"));
+  revalidatePath(back);
+  redirect(withFlash(back, "saved", "defect"));
+}
+
+export async function acceptHome(fd: FormData) {
+  const locale = formLocale(fd);
+  const back = `/${locale}/app/customer`;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("accept_handover", { target_unit: str(fd, "unit_id") });
+  if (error)
+    redirect(
+      withFlash(
+        back,
+        "error",
+        error.message.includes("defects") ? "customerDefects" : "handoverStep",
+      ),
+    );
+  revalidatePath(back);
+  redirect(withFlash(back, "saved", "handover"));
+}
+
+/** Homeowner after-sales: raise a repair and confirm or reopen it once resolved. */
+export async function requestService(fd: FormData) {
+  const locale = formLocale(fd);
+  const back = `/${locale}/app/customer`;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("raise_service_request", {
+    target_unit: str(fd, "unit_id"),
+    data: {
+      title: str(fd, "title"),
+      description: str(fd, "description"),
+      location: str(fd, "location"),
+      warranty_id: str(fd, "warranty_id"),
+    },
+  });
+  if (error) redirect(withFlash(back, "error", "invalid"));
+  revalidatePath(back);
+  redirect(withFlash(back, "saved", "service"));
+}
+
+export async function confirmService(fd: FormData) {
+  const locale = formLocale(fd);
+  const back = `/${locale}/app/customer`;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("update_service_request", {
+    target_sr: str(fd, "sr_id"),
+    action: str(fd, "action") === "REOPEN" ? "REOPEN" : "CLOSE",
+    note: optStr(fd, "note"),
+  });
+  if (error) redirect(withFlash(back, "error", "invalid"));
+  revalidatePath(back);
+  redirect(withFlash(back, "saved", "service"));
+}
