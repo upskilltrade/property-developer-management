@@ -98,6 +98,11 @@ export default async function AppLayout({
               selfApprove: t.flash.selfApprove,
               bookingHasPayments: t.flash.bookingHasPayments,
               contactRequired: t.flash.contactRequired,
+              bookingHasContract: t.flash.bookingHasContract,
+              priceBelowApproved: t.flash.priceBelowApproved,
+              changeNote: t.flash.changeNote,
+              contractLocked: t.flash.contractLocked,
+              contractFile: t.flash.contractFile,
             },
           }}
         />

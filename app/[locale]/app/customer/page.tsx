@@ -1,4 +1,4 @@
-import { CalendarCheck, Home, Images } from "lucide-react";
+import { CalendarCheck, FileText, Home, Images } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -72,6 +72,18 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
     ? await supabase.storage.from("site-photos").createSignedUrls(paths, 3600)
     : { data: [] };
   const url = new Map((signed ?? []).map((x) => [x.path, x.signedUrl]));
+  // RLS returns only this customer's signed contracts; the PDF opens through a short-lived URL.
+  const { data: contracts } = await supabase
+    .from("sales_contracts")
+    .select("id,unit_id,contract_no,signed_on,signed_file_path")
+    .eq("status", "SIGNED");
+  const contractPaths = (contracts ?? [])
+    .map((k) => k.signed_file_path)
+    .filter(Boolean) as string[];
+  const { data: contractUrls } = contractPaths.length
+    ? await supabase.storage.from("contract-files").createSignedUrls(contractPaths, 600)
+    : { data: [] };
+  const contractUrl = new Map((contractUrls ?? []).map((x) => [x.path, x.signedUrl]));
   const name = (x: Named) => (locale === "th" ? x.name_th : x.name_en) || x.name_en;
   const date = (v: string | null | undefined) => formatDate(locale, v);
 
@@ -129,6 +141,39 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
                 ) : null}
               </div>
             </div>
+
+            {(contracts ?? []).some((k) => k.unit_id === u.unit_id) ? (
+              <Panel title={c.documents}>
+                <ul className="divide-y divide-line">
+                  {(contracts ?? [])
+                    .filter((k) => k.unit_id === u.unit_id)
+                    .map((k) => {
+                      const href = k.signed_file_path ? contractUrl.get(k.signed_file_path) : null;
+                      return (
+                        <li key={k.id} className="flex items-center gap-3 px-4 py-3 text-[13px]">
+                          <FileText className="size-4 shrink-0 text-muted" />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium">{c.signedContract}</p>
+                            <p className="text-2xs text-muted">
+                              {k.contract_no} · {date(k.signed_on)}
+                            </p>
+                          </div>
+                          {href ? (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[13px] font-medium text-brand hover:underline"
+                            >
+                              {c.openDocument}
+                            </a>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                </ul>
+              </Panel>
+            ) : null}
 
             <CustomerPayments
               data={paymentsByUnit.get(u.unit_id)}

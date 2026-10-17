@@ -15,6 +15,11 @@ function errorKey(message: string | undefined) {
   if (message.includes("closed") || message.includes("is booked")) return "leadClosed";
   if (message.includes("cannot approve their own")) return "selfApprove";
   if (message.includes("has payments")) return "bookingHasPayments";
+  if (message.includes("has contract")) return "bookingHasContract";
+  if (message.includes("below approved price")) return "priceBelowApproved";
+  if (message.includes("Change note")) return "changeNote";
+  if (message.includes("cannot be changed")) return "contractLocked";
+  if (message.includes("file not uploaded")) return "contractFile";
   if (message.includes("Contact required")) return "contactRequired";
   if (/Invalid|required|duplicate key/.test(message))
     return message.includes("duplicate") ? "unitUnavailable" : "invalid";
@@ -162,4 +167,66 @@ export async function cancelBooking(fd: FormData) {
     reason: str(fd, "reason"),
   });
   finish(error, "cancel");
+}
+
+const contractData = (fd: FormData) => ({
+  contract_price: str(fd, "contract_price"),
+  down_payment: str(fd, "down_payment"),
+  installment_count: str(fd, "installment_count"),
+  transfer_due: str(fd, "transfer_due"),
+  language: str(fd, "language"),
+  terms: str(fd, "terms"),
+  change_note: str(fd, "change_note"),
+});
+
+export async function createContract(fd: FormData) {
+  const { locale, supabase, finish } = await context(fd);
+  const { data, error } = await supabase.rpc("create_contract", {
+    target_booking: str(fd, "booking_id"),
+    data: contractData(fd),
+  });
+  finish(error, "contract", data ? `/${locale}/app/sales/contracts/${data}` : undefined);
+}
+
+export async function reviseContract(fd: FormData) {
+  const { supabase, finish } = await context(fd);
+  const { error } = await supabase.rpc("revise_contract", {
+    target_contract: str(fd, "contract_id"),
+    data: contractData(fd),
+  });
+  finish(error, "contract");
+}
+
+export async function signContract(fd: FormData) {
+  const { supabase, finish } = await context(fd);
+  const { error } = await supabase.rpc("sign_contract", {
+    target_contract: str(fd, "contract_id"),
+    signed_on: str(fd, "signed_on"),
+    file_path: optStr(fd, "file_path"),
+  });
+  finish(error, "signed");
+}
+
+export async function cancelContract(fd: FormData) {
+  const { supabase, finish } = await context(fd);
+  const { error } = await supabase.rpc("cancel_contract", {
+    target_contract: str(fd, "contract_id"),
+    reason: str(fd, "reason"),
+  });
+  finish(error, "cancel");
+}
+
+export async function updateCustomer(fd: FormData) {
+  const { supabase, finish } = await context(fd);
+  const { error } = await supabase.rpc("update_customer", {
+    target_customer: str(fd, "customer_id"),
+    data: {
+      full_name: str(fd, "full_name"),
+      phone: str(fd, "phone"),
+      email: str(fd, "email"),
+      nationality: str(fd, "nationality"),
+      notes: str(fd, "notes"),
+    },
+  });
+  finish(error, "customer");
 }
