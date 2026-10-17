@@ -16,7 +16,13 @@ import {
   type CustomerDrawing,
   type CustomerSelection,
 } from "@/components/domain/customer-design";
-import { decideDesign, submitPaymentEvidence } from "./actions";
+import {
+  CustomerChanges,
+  type CustomerOffer,
+  type CustomerRequest,
+} from "@/components/domain/customer-changes";
+import { VO_VERSION_COLUMNS } from "@/lib/variations";
+import { decideDesign, decideVariation, requestChange, submitPaymentEvidence } from "./actions";
 
 type Named = { name_th: string; name_en: string };
 type PortalUnit = {
@@ -119,6 +125,40 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
     : { data: [] };
   const designUrl = new Map((designUrls ?? []).map((x) => [x.path, x.signedUrl]));
   const unitCodeById = new Map(units.map((u) => [u.unit_id, u.unit_code]));
+  // Change control: own requests and the variation versions offered to this customer.
+  const [{ data: crRows }, { data: voRows }, { data: voVersions }] = await Promise.all([
+    supabase
+      .from("change_requests")
+      .select("id,cr_no,title,status,unit_id,created_at")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("variation_orders")
+      .select("id,vo_no,title,status,unit_id,current_version,approved_version")
+      .order("created_at", { ascending: false }),
+    supabase.from("vo_versions").select(VO_VERSION_COLUMNS),
+  ]);
+  const customerRequests: CustomerRequest[] = (crRows ?? []).map((r) => ({
+    id: r.id,
+    crNo: r.cr_no,
+    title: r.title,
+    status: r.status,
+    unitCode: unitCodeById.get(r.unit_id) ?? "",
+    createdAt: r.created_at,
+  }));
+  const customerOffers: CustomerOffer[] = (voRows ?? []).map((v) => {
+    const ver = (voVersions ?? []).find((x) => x.vo_id === v.id && x.version === v.current_version);
+    return {
+      id: v.id,
+      voNo: v.vo_no,
+      title: v.title,
+      status: v.status,
+      unitCode: unitCodeById.get(v.unit_id) ?? "",
+      version: v.current_version,
+      revisedScope: ver?.revised_scope ?? "",
+      priceDelta: Number(ver?.price_delta ?? 0),
+      timeDeltaDays: ver?.time_delta_days ?? 0,
+    };
+  });
   const customerDrawings: CustomerDrawing[] = (designRevs ?? []).map((r) => {
     const dr = pick(r.drawings);
     return {
@@ -307,6 +347,15 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
           </section>
         );
       })}
+      <CustomerChanges
+        t={t}
+        locale={locale}
+        units={units.map((u) => ({ id: u.unit_id, code: u.unit_code }))}
+        requests={customerRequests}
+        offers={customerOffers}
+        requestAction={requestChange}
+        decideAction={decideVariation}
+      />
       {customerDrawings.length || customerSelections.length ? (
         <CustomerDesign
           t={t}

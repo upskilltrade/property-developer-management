@@ -51,3 +51,39 @@ export async function decideDesign(fd: FormData) {
   revalidatePath(back);
   redirect(withFlash(back, "saved", "decision"));
 }
+
+/** Customer asks for a change on their unit; staff price it as a variation order. */
+export async function requestChange(fd: FormData) {
+  const locale = formLocale(fd);
+  const back = `/${locale}/app/customer`;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("submit_change_request", {
+    target_project: null,
+    data: {
+      unit_id: str(fd, "unit_id"),
+      title: str(fd, "title"),
+      description: str(fd, "description"),
+    },
+  });
+  if (error) redirect(withFlash(back, "error", "invalid"));
+  revalidatePath(back);
+  redirect(withFlash(back, "saved", "request"));
+}
+
+/** Customer approves or declines the offered variation version. */
+export async function decideVariation(fd: FormData) {
+  const locale = formLocale(fd);
+  const back = `/${locale}/app/customer`;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("customer_decide_variation", {
+    target_vo: str(fd, "vo_id"),
+    approve: str(fd, "decision") === "approve",
+    comment: optStr(fd, "comment"),
+  });
+  if (error)
+    redirect(
+      withFlash(back, "error", error.message.includes("Comment") ? "commentRequired" : "invalid"),
+    );
+  revalidatePath(back);
+  redirect(withFlash(back, "saved", "decision"));
+}

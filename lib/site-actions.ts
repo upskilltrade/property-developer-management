@@ -6,7 +6,11 @@ import { formLocale, str, withFlash } from "@/lib/form";
 import { siteErrorKey } from "@/lib/site";
 
 /** Shared server-action context: session, safe return path and flash redirect. */
-export async function siteContext(fd: FormData, allowedPrefix: (locale: string) => string) {
+export async function siteContext(
+  fd: FormData,
+  allowedPrefix: (locale: string) => string,
+  errorKey: (message: string | undefined) => string = siteErrorKey,
+) {
   const locale = formLocale(fd);
   const fallback = allowedPrefix(locale);
   const requested = str(fd, "return_to");
@@ -17,7 +21,7 @@ export async function siteContext(fd: FormData, allowedPrefix: (locale: string) 
   } = await supabase.auth.getUser();
   if (!user) redirect(`/${locale}/login`);
   const finish = (error: { message?: string } | null, key: string, to = back): never => {
-    if (error) redirect(withFlash(back, "error", siteErrorKey(error.message)));
+    if (error) redirect(withFlash(back, "error", errorKey(error.message)));
     revalidatePath(`/${locale}/app`, "layout");
     redirect(withFlash(to, "saved", key));
   };

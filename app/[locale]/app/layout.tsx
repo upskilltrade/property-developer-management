@@ -113,6 +113,11 @@ export default async function AppLayout({
               rfiClosed: t.flash.rfiClosed,
               wrongState: t.flash.wrongState,
               reportExists: t.flash.reportExists,
+              voLocked: t.flash.voLocked,
+              voState: t.flash.voState,
+              selfApproveVo: t.flash.selfApproveVo,
+              paymentCondition: t.flash.paymentCondition,
+              drawingNotReleased: t.flash.drawingNotReleased,
             },
           }}
         />
