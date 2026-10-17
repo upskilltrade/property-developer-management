@@ -11,7 +11,12 @@ import { cn } from "@/components/ui/cn";
 import { PortalPlaceholder } from "@/components/domain/portal-placeholder";
 import { PhotoThumb } from "@/components/domain/photo-thumb";
 import { CustomerPayments, type CustomerUnitPayments } from "@/components/domain/customer-payments";
-import { submitPaymentEvidence } from "./actions";
+import {
+  CustomerDesign,
+  type CustomerDrawing,
+  type CustomerSelection,
+} from "@/components/domain/customer-design";
+import { decideDesign, submitPaymentEvidence } from "./actions";
 
 type Named = { name_th: string; name_en: string };
 type PortalUnit = {
@@ -84,6 +89,61 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
     ? await supabase.storage.from("contract-files").createSignedUrls(contractPaths, 600)
     : { data: [] };
   const contractUrl = new Map((contractUrls ?? []).map((x) => [x.path, x.signedUrl]));
+  // Design: RLS returns only released revisions of customer-visible drawings and published selections.
+  const [{ data: designRevs }, { data: designSels }, { data: designDecisions }] = await Promise.all(
+    [
+      supabase
+        .from("drawing_revisions")
+        .select(
+          "id,revision_code,released_at,file_path,drawings!drawing_revisions_drawing_id_fkey(drawing_no,title,discipline)",
+        )
+        .eq("status", "RELEASED"),
+      supabase
+        .from("material_selections")
+        .select("id,unit_id,area,version,status,materials(name_th,name_en,brand,image_path)")
+        .in("status", ["PUBLISHED", "APPROVED", "CHANGE_REQUESTED"])
+        .order("area"),
+      supabase
+        .from("customer_approvals")
+        .select("entity_id,decision,comment,decided_at")
+        .order("decided_at", { ascending: false }),
+    ],
+  );
+  const pick = <T,>(v: T | T[] | null) => (Array.isArray(v) ? v[0] : v);
+  const designPaths = [
+    ...(designRevs ?? []).map((r) => r.file_path),
+    ...(designSels ?? []).map((x) => pick(x.materials)?.image_path).filter(Boolean),
+  ] as string[];
+  const { data: designUrls } = designPaths.length
+    ? await supabase.storage.from("design-files").createSignedUrls(designPaths, 600)
+    : { data: [] };
+  const designUrl = new Map((designUrls ?? []).map((x) => [x.path, x.signedUrl]));
+  const unitCodeById = new Map(units.map((u) => [u.unit_id, u.unit_code]));
+  const customerDrawings: CustomerDrawing[] = (designRevs ?? []).map((r) => {
+    const dr = pick(r.drawings);
+    return {
+      revisionId: r.id,
+      drawingNo: dr?.drawing_no ?? "",
+      title: dr?.title ?? "",
+      discipline: dr?.discipline ?? "",
+      revisionCode: r.revision_code,
+      releasedAt: r.released_at,
+      url: designUrl.get(r.file_path) ?? null,
+    };
+  });
+  const customerSelections: CustomerSelection[] = (designSels ?? []).map((x) => {
+    const m = pick(x.materials);
+    return {
+      id: x.id,
+      unitCode: unitCodeById.get(x.unit_id) ?? "",
+      area: x.area,
+      version: x.version,
+      status: x.status,
+      material: (locale === "en" && m?.name_en) || m?.name_th || "",
+      brand: m?.brand ?? null,
+      imageUrl: m?.image_path ? (designUrl.get(m.image_path) ?? null) : null,
+    };
+  });
   const name = (x: Named) => (locale === "th" ? x.name_th : x.name_en) || x.name_en;
   const date = (v: string | null | undefined) => formatDate(locale, v);
 
@@ -247,6 +307,21 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
           </section>
         );
       })}
+      {customerDrawings.length || customerSelections.length ? (
+        <CustomerDesign
+          t={t}
+          locale={locale}
+          drawings={customerDrawings}
+          selections={customerSelections}
+          decisions={(designDecisions ?? []).map((x) => ({
+            entityId: x.entity_id,
+            decision: x.decision,
+            comment: x.comment,
+            decidedAt: x.decided_at,
+          }))}
+          action={decideDesign}
+        />
+      ) : null}
     </div>
   );
 }

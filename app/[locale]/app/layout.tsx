@@ -103,6 +103,11 @@ export default async function AppLayout({
               changeNote: t.flash.changeNote,
               contractLocked: t.flash.contractLocked,
               contractFile: t.flash.contractFile,
+              designFile: t.flash.designFile,
+              openRevision: t.flash.openRevision,
+              selfReview: t.flash.selfReview,
+              revisionState: t.flash.revisionState,
+              commentRequired: t.flash.commentRequired,
             },
           }}
         />

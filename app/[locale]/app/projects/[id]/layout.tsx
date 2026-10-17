@@ -66,6 +66,7 @@ export default async function ProjectLayout({
             overview: t.nav.overview,
             schedule: t.nav.schedule,
             photos: t.nav.photos,
+            design: t.nav.design,
             setup: t.nav.setup,
             finance: t.nav.projectFinance,
           }}
