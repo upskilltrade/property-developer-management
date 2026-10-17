@@ -122,6 +122,14 @@ export default async function AppLayout({
               selfApproveProc: t.flash.selfApproveProc,
               aboveLimit: t.flash.aboveLimit,
               procState: t.flash.procState,
+              notComplete: t.flash.notComplete,
+              criticalDefects: t.flash.criticalDefects,
+              customerDefects: t.flash.customerDefects,
+              itemsNotDelivered: t.flash.itemsNotDelivered,
+              handoverFile: t.flash.handoverFile,
+              handoverStep: t.flash.handoverStep,
+              handoverDone: t.flash.handoverDone,
+              notHandedOver: t.flash.notHandedOver,
             },
           }}
         />

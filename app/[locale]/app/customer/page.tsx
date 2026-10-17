@@ -22,7 +22,22 @@ import {
   type CustomerRequest,
 } from "@/components/domain/customer-changes";
 import { VO_VERSION_COLUMNS } from "@/lib/variations";
-import { decideDesign, decideVariation, requestChange, submitPaymentEvidence } from "./actions";
+import {
+  CustomerHome,
+  type HomeDefect,
+  type HomeService,
+  type HomeWarranty,
+} from "@/components/domain/customer-home";
+import {
+  acceptHome,
+  confirmService,
+  decideDesign,
+  decideVariation,
+  reportObservation,
+  requestChange,
+  requestService,
+  submitPaymentEvidence,
+} from "./actions";
 
 type Named = { name_th: string; name_en: string };
 type PortalUnit = {
@@ -145,6 +160,88 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
     unitCode: unitCodeById.get(r.unit_id) ?? "",
     createdAt: r.created_at,
   }));
+  // Handover / homeowner mode per unit.
+  const [{ data: handovers }, { data: warrantyRows }, { data: serviceRows }, { data: defectRows }] =
+    await Promise.all([
+      supabase
+        .from("unit_handovers")
+        .select(
+          "unit_id,status,inspection_scheduled_at,handover_date,acknowledgement_path,handover_items(id,kind,description,file_path)",
+        ),
+      supabase
+        .from("unit_warranties")
+        .select("id,unit_id,end_date,warranty_types(name_th,name_en)"),
+      supabase
+        .from("service_requests")
+        .select("id,unit_id,sr_no,title,status,resolution,created_at")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("defects")
+        .select("id,unit_id,defect_no,title,location,status")
+        .order("created_at", { ascending: false }),
+    ]);
+  const handoverPaths = (handovers ?? []).flatMap((x) =>
+    [x.acknowledgement_path, ...(x.handover_items ?? []).map((i) => i.file_path)].filter(Boolean),
+  ) as string[];
+  const { data: handoverUrls } = handoverPaths.length
+    ? await supabase.storage.from("handover-files").createSignedUrls(handoverPaths, 600)
+    : { data: [] };
+  const handoverUrl = new Map((handoverUrls ?? []).map((x) => [x.path, x.signedUrl]));
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const homeFor = (unitId: string) => {
+    const ho = (handovers ?? []).find((x) => x.unit_id === unitId);
+    if (!ho || !["CUSTOMER_INSPECTION", "ACCEPTED", "HANDED_OVER"].includes(ho.status)) return null;
+    return {
+      handover: {
+        status: ho.status,
+        inspectionAt: ho.inspection_scheduled_at,
+        handoverDate: ho.handover_date,
+        acknowledgementUrl: ho.acknowledgement_path
+          ? (handoverUrl.get(ho.acknowledgement_path) ?? null)
+          : null,
+        items: (ho.handover_items ?? []).map((i) => ({
+          id: i.id,
+          kind: i.kind,
+          description: i.description,
+          url: i.file_path ? (handoverUrl.get(i.file_path) ?? null) : null,
+        })),
+      },
+      warranties: (warrantyRows ?? [])
+        .filter((w) => w.unit_id === unitId)
+        .map((w): HomeWarranty => {
+          const wt = pick(w.warranty_types);
+          return {
+            id: w.id,
+            name: (locale === "en" && wt?.name_en) || wt?.name_th || "",
+            endDate: w.end_date,
+            active: w.end_date >= todayIso,
+          };
+        }),
+      services: (serviceRows ?? [])
+        .filter((x) => x.unit_id === unitId)
+        .map(
+          (x): HomeService => ({
+            id: x.id,
+            srNo: x.sr_no,
+            title: x.title,
+            status: x.status,
+            resolution: x.resolution,
+            createdAt: x.created_at,
+          }),
+        ),
+      defects: (defectRows ?? [])
+        .filter((d) => d.unit_id === unitId)
+        .map(
+          (d): HomeDefect => ({
+            id: d.id,
+            defectNo: d.defect_no,
+            title: d.title,
+            location: d.location,
+            status: d.status,
+          }),
+        ),
+    };
+  };
   const customerOffers: CustomerOffer[] = (voRows ?? []).map((v) => {
     const ver = (voVersions ?? []).find((x) => x.vo_id === v.id && x.version === v.current_version);
     return {
@@ -204,6 +301,18 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
           .filter((s) => s.pct != null);
         return (
           <section key={u.unit_id} className="space-y-4">
+            {(() => {
+              const home = homeFor(u.unit_id);
+              return home ? (
+                <CustomerHome
+                  t={t}
+                  locale={locale}
+                  unitId={u.unit_id}
+                  {...home}
+                  actions={{ reportObservation, acceptHome, requestService, confirmService }}
+                />
+              ) : null;
+            })()}
             <div className="rounded-lg border border-line bg-surface p-5 shadow-xs">
               <p className="text-2xs font-medium tracking-wide text-muted uppercase">
                 {u.project_name}

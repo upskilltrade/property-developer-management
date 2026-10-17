@@ -3,50 +3,35 @@
 import { usePathname } from "next/navigation";
 import { Tabs } from "@/components/ui/tabs";
 
+const sections = [
+  "schedule",
+  "photos",
+  "design",
+  "site",
+  "changes",
+  "procurement",
+  "handover",
+  "setup",
+  "finance",
+] as const;
+
 export function ProjectTabs({
   base,
   labels,
 }: {
   base: string;
-  labels: {
-    overview: string;
-    schedule: string;
-    photos: string;
-    design: string;
-    site: string;
-    changes: string;
-    procurement: string;
-    setup: string;
-    finance: string;
-  };
+  labels: Record<"overview" | (typeof sections)[number], string>;
 }) {
   const pathname = usePathname();
   const section = pathname.slice(base.length).split("/")[1] ?? "";
-  const active = [
-    "schedule",
-    "photos",
-    "design",
-    "site",
-    "changes",
-    "procurement",
-    "setup",
-    "finance",
-  ].includes(section)
-    ? section
-    : "overview";
+  // The active tab is whichever section the path is in; anything else is the overview.
+  const active = (sections as readonly string[]).includes(section) ? section : "overview";
   return (
     <Tabs
       active={active}
       items={[
         { key: "overview", label: labels.overview, href: base },
-        { key: "schedule", label: labels.schedule, href: `${base}/schedule` },
-        { key: "photos", label: labels.photos, href: `${base}/photos` },
-        { key: "design", label: labels.design, href: `${base}/design` },
-        { key: "site", label: labels.site, href: `${base}/site` },
-        { key: "changes", label: labels.changes, href: `${base}/changes` },
-        { key: "procurement", label: labels.procurement, href: `${base}/procurement` },
-        { key: "setup", label: labels.setup, href: `${base}/setup` },
-        { key: "finance", label: labels.finance, href: `${base}/finance` },
+        ...sections.map((key) => ({ key, label: labels[key], href: `${base}/${key}` })),
       ]}
     />
   );

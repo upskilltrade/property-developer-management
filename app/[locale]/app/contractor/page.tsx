@@ -5,6 +5,7 @@ import { label } from "@/lib/i18n/label";
 import { formatDate, formatDateTime, toNumber } from "@/lib/format";
 import { activityName } from "@/lib/schedule";
 import { defectTone, rfiTone, severityTone, siTone, weathers } from "@/lib/site";
+import { srTone } from "@/lib/handover";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -15,6 +16,7 @@ import { PortalPlaceholder } from "@/components/domain/portal-placeholder";
 import { ReportProgressForm } from "@/components/domain/report-progress-form";
 import {
   fixDefect,
+  resolveService,
   raiseRfi,
   replyRfi,
   reportProgress,
@@ -105,6 +107,11 @@ export default async function ContractorPortal({
   ]);
   const openWork = (activities ?? []).filter((a) => toNumber(a.verified_percent) < 100);
   const doneCount = (activities ?? []).length - openWork.length;
+  const { data: services } = await supabase
+    .from("service_requests")
+    .select("id,sr_no,title,description,location,status,unit_id,due_date")
+    .in("status", ["ASSIGNED", "OPEN"])
+    .order("created_at", { ascending: false });
   const lastUpdate = (activityId: string) =>
     (updates ?? []).find((u) => u.activity_id === activityId);
   const paths = (revisions ?? []).map((r) => r.file_path);
@@ -195,6 +202,39 @@ export default async function ContractorPortal({
           </Sheet>
         </div>
       </div>
+
+      {services?.length ? (
+        <Panel title={c.service}>
+          <ul className="divide-y divide-line">
+            {services.map((x) => (
+              <li key={x.id} className="space-y-1.5 px-4 py-3 text-[13px]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-[12px] font-semibold">{x.sr_no}</span>
+                  <span className="font-medium">{x.title}</span>
+                  <Badge tone={srTone[x.status] ?? "neutral"} className="ml-auto">
+                    {label(t.status.sr, x.status)}
+                  </Badge>
+                </div>
+                <p className="text-ink-2">{x.description}</p>
+                <p className="text-2xs text-muted">
+                  {x.location ?? ""}
+                  {x.due_date ? ` · ${s.dueDate} ${formatDate(locale, x.due_date)}` : ""}
+                </p>
+                <form action={resolveService} className="flex flex-wrap items-center gap-1.5">
+                  <Hidden values={{ locale, return_to: back, sr_id: x.id }} />
+                  <Input
+                    name="note"
+                    required
+                    placeholder={c.resolution}
+                    className="h-7 min-w-48 flex-1 text-2xs"
+                  />
+                  <SubmitButton size="xs">{c.resolve}</SubmitButton>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      ) : null}
 
       {defects?.length ? (
         <Panel title={c.defects}>

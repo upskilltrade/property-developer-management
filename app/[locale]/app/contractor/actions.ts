@@ -90,3 +90,13 @@ export async function submitSiteReport(fd: FormData) {
   });
   finish(error, "report");
 }
+
+export async function resolveService(fd: FormData) {
+  const { supabase, finish } = await ctx(fd);
+  const { error } = await supabase.rpc("update_service_request", {
+    target_sr: str(fd, "sr_id"),
+    action: "RESOLVE",
+    note: optStr(fd, "note"),
+  });
+  finish(error, "service");
+}

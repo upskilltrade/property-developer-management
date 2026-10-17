@@ -70,6 +70,7 @@ export default async function ProjectLayout({
             site: t.nav.site,
             changes: t.nav.changes,
             procurement: t.nav.procurement,
+            handover: t.nav.handover,
             setup: t.nav.setup,
             finance: t.nav.projectFinance,
           }}
