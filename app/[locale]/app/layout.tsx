@@ -108,6 +108,11 @@ export default async function AppLayout({
               selfReview: t.flash.selfReview,
               revisionState: t.flash.revisionState,
               commentRequired: t.flash.commentRequired,
+              notAssigned: t.flash.notAssigned,
+              selfVerifyFix: t.flash.selfVerifyFix,
+              rfiClosed: t.flash.rfiClosed,
+              wrongState: t.flash.wrongState,
+              reportExists: t.flash.reportExists,
             },
           }}
         />
