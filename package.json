@@ -11,6 +11,7 @@
     "format": "prettier --write app components lib proxy.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.0.0",
     "@tailwindcss/postcss": "4.3.3",
