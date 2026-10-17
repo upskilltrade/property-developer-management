@@ -20,6 +20,7 @@ import {
   Radar,
   Search,
   Settings2,
+  Sparkles,
   ShieldCheck,
   Wallet,
   X,
@@ -42,6 +43,7 @@ const icons = {
   contractor: HardHat,
   customer: Home,
   bell: Bell,
+  assistant: Sparkles,
 } as const;
 
 export type NavIcon = keyof typeof icons;

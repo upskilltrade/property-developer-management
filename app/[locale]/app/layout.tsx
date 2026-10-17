@@ -27,6 +27,7 @@ export default async function AppLayout({
       items: [
         { label: t.nav.dashboard, href: base, icon: "dashboard", exact: true },
         { label: t.nav.control, href: `${base}/control`, icon: "control" },
+        { label: t.nav.assistant, href: `${base}/assistant`, icon: "assistant" },
         { label: t.nav.projects, href: `${base}/projects`, icon: "projects", exact: true },
         { label: t.nav.sales, href: `${base}/sales`, icon: "sales" },
         { label: t.nav.finance, href: `${base}/finance`, icon: "finance" },

@@ -137,6 +137,7 @@ const en: Dictionary = {
     notifications: "Notifications",
     account: "My account",
     notificationSettings: "Notification settings",
+    assistant: "AI assistant",
   },
   dashboard: {
     title: "Portfolio overview",
@@ -1226,6 +1227,46 @@ const en: Dictionary = {
       ran: "Run complete, {n} notifications created",
     },
     outbox: { PENDING: "Queued", SENT: "Sent", FAILED: "Failed", SKIPPED: "Skipped" },
+  },
+  assistant: {
+    title: "AI assistant",
+    subtitle:
+      "Ask about projects, units, sales, cash, construction and purchasing, answered from live system data within your permissions",
+    placeholder: "Ask a question, e.g. Which units are delayed?",
+    send: "Ask",
+    clear: "New conversation",
+    working: "Looking up data…",
+    disclaimer:
+      "The AI can read only what you are allowed to see and cannot change data. Check the linked source records before deciding.",
+    examples: [
+      "Which units are behind schedule?",
+      "What needs approval today?",
+      "Which payments are due in the next 30 days or overdue?",
+      "Which materials or purchases are at risk of arriving late?",
+      "Why is the cost forecast above budget?",
+      "Summarize Project 001",
+    ],
+    tools: {
+      portfolio_summary: "Reading portfolio summary",
+      list_houses: "Checking every house",
+      pending_approvals: "Checking pending approvals",
+      critical_issues: "Checking critical issues",
+      payments_due: "Checking instalments",
+      cost_analysis: "Analysing cost",
+      procurement_risk: "Checking procurement risk",
+      unit_details: "Reading unit details",
+      recent_activity: "Reading recent timeline",
+    },
+    errors: {
+      not_configured:
+        "ANTHROPIC_API_KEY is not set in Vercel — an administrator needs to add it first",
+      refusal: "The AI can't answer this question; try rephrasing it",
+      auth: "The AI API key is invalid; contact your administrator",
+      rate_limit: "Too many requests; try again in a moment",
+      too_many_steps: "That question needed too many steps; try splitting it up",
+      generic: "Something went wrong; please try again",
+    },
+    truncated: "(answer was cut off)",
   },
   access: {
     title: "User access",
