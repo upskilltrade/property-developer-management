@@ -3,19 +3,23 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { code, formLocale, optStr, str, withFlash } from "@/lib/form";
+import { projectStatuses } from "@/lib/status";
 
-const statuses = new Set(["PLANNING","ACTIVE","ON_HOLD","COMPLETED","ARCHIVED"]);
+const validStatus = (s: string) => (projectStatuses as readonly string[]).includes(s);
 
-export async function createProject(formData: FormData) {
-  const locale = formData.get("locale") === "en" ? "en" : "th";
-  const name = String(formData.get("name") ?? "").trim();
-  const code = String(formData.get("code") ?? "").trim().toUpperCase();
-  const status = String(formData.get("status") ?? "PLANNING");
-  const target = String(formData.get("target_completion_date") ?? "").trim();
-  if (!name || !code || !statuses.has(status)) redirect(`/${locale}/app/projects?error=invalid`);
+export async function createProject(fd: FormData) {
+  const locale = formLocale(fd);
+  const back = `/${locale}/app/projects`;
+  const name = str(fd, "name");
+  const projectCode = code(fd, "code");
+  const status = str(fd, "status") || "PLANNING";
+  if (!name || !projectCode || !validStatus(status)) redirect(withFlash(back, "error", "invalid"));
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect(`/${locale}/login`);
 
   const { data: membership } = await supabase
@@ -25,36 +29,49 @@ export async function createProject(formData: FormData) {
     .eq("status", "ACTIVE")
     .limit(1)
     .maybeSingle();
-  if (!membership) redirect(`/${locale}/app/projects?error=permission`);
+  if (!membership) redirect(withFlash(back, "error", "permission"));
 
-  const { error } = await supabase.from("projects").insert({
-    organization_id: membership.organization_id, code, name, status,
-    default_locale: locale, timezone: "Asia/Bangkok", currency_code: "THB",
-    target_completion_date: target || null,
-  });
-  if (error) redirect(`/${locale}/app/projects?error=create`);
-  revalidatePath(`/${locale}/app`);
-  revalidatePath(`/${locale}/app/projects`);
-  redirect(`/${locale}/app/projects?created=1`);
+  const { data: created, error } = await supabase
+    .from("projects")
+    .insert({
+      organization_id: membership.organization_id,
+      code: projectCode,
+      name,
+      status,
+      default_locale: locale,
+      timezone: "Asia/Bangkok",
+      currency_code: "THB",
+      target_completion_date: optStr(fd, "target_completion_date"),
+    })
+    .select("id")
+    .single();
+  if (error || !created) redirect(withFlash(back, "error", "create"));
+  revalidatePath(`/${locale}/app`, "layout");
+  redirect(withFlash(`${back}/${created.id}/setup`, "saved", "project"));
 }
 
-export async function updateProject(formData: FormData) {
-  const locale = formData.get("locale") === "en" ? "en" : "th";
-  const id = String(formData.get("id") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
-  const code = String(formData.get("code") ?? "").trim().toUpperCase();
-  const status = String(formData.get("status") ?? "");
-  const target = String(formData.get("target_completion_date") ?? "").trim();
-  if (!id || !name || !code || !statuses.has(status)) redirect(`/${locale}/app/projects?error=invalid`);
+export async function updateProject(fd: FormData) {
+  const locale = formLocale(fd);
+  const id = str(fd, "id");
+  const back = `/${locale}/app/projects/${id}`;
+  const name = str(fd, "name");
+  const projectCode = code(fd, "code");
+  const status = str(fd, "status");
+  if (!id || !name || !projectCode || !validStatus(status))
+    redirect(withFlash(back, "error", "invalid"));
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect(`/${locale}/login`);
-  const { error } = await supabase.from("projects").update({
-    code, name, status, target_completion_date: target || null, updated_at: new Date().toISOString(),
-  }).eq("id", id);
-  if (error) redirect(`/${locale}/app/projects?error=update`);
-  revalidatePath(`/${locale}/app`);
-  revalidatePath(`/${locale}/app/projects`);
-  redirect(`/${locale}/app/projects?updated=1`);
+  const { error } = await supabase
+    .from("projects")
+    .update({
+      code: projectCode,
+      name,
+      status,
+      target_completion_date: optStr(fd, "target_completion_date"),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) redirect(withFlash(back, "error", "update"));
+  revalidatePath(`/${locale}/app`, "layout");
+  redirect(withFlash(back, "saved", "project"));
 }
