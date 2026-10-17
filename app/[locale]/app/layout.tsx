@@ -45,6 +45,21 @@ export default async function AppLayout({
   if (session.roles.has("CUSTOMER"))
     portals.push({ label: t.portal.customer.title, href: `${base}/customer`, icon: "customer" });
   if (portals.length) sections.push({ label: t.nav.main, items: portals });
+  sections.push({
+    label: t.nav.account,
+    items: [
+      { label: t.nav.notifications, href: `${base}/notifications`, icon: "bell" },
+      {
+        label: t.nav.notificationSettings,
+        href: `${base}/settings/notifications`,
+        icon: "setup",
+      },
+    ],
+  });
+  const { count: unread } = await session.supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null);
   if (session.ownerOrganizationId) {
     sections.push({
       label: t.nav.admin,
@@ -63,6 +78,11 @@ export default async function AppLayout({
         roles: [...session.roles],
       }}
       signOut={logout}
+      notifications={{
+        href: `${base}/notifications`,
+        unread: unread ?? 0,
+        label: t.nav.notifications,
+      }}
       labels={{
         appName: t.app.name,
         project: t.nav.project,
@@ -131,6 +151,7 @@ export default async function AppLayout({
               handoverStep: t.flash.handoverStep,
               handoverDone: t.flash.handoverDone,
               notHandedOver: t.flash.notHandedOver,
+              lineIdRequired: t.flash.lineIdRequired,
             },
           }}
         />
