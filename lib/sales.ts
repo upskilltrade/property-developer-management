@@ -60,3 +60,9 @@ export const fromLocalDateTime = (v: string) => (v ? `${v}:00${SITE_TZ_OFFSET}` 
 
 /** Epoch ms N days from now (negative for the past); kept out of render bodies for purity lint. */
 export const daysFromNow = (days: number) => Date.now() + days * 86_400_000;
+
+export const contractTone: Record<string, Tone> = {
+  DRAFT: "warning",
+  SIGNED: "success",
+  CANCELLED: "neutral",
+};

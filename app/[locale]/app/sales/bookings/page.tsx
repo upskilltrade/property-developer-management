@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Receipt } from "lucide-react";
+import { FileSignature, Receipt } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -12,7 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Hidden, Input, Select } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { decideBooking } from "../actions";
+import { Sheet } from "@/components/ui/sheet";
+import { ContractTermsForm } from "@/components/domain/contract-terms-form";
+import { createContract, decideBooking } from "../actions";
 
 export const metadata: Metadata = { title: "Bookings" };
 
@@ -33,7 +35,7 @@ export default async function Bookings({
   let query = supabase
     .from("bookings")
     .select(
-      "id,booking_no,booking_date,project_id,unit_id,lead_id,list_price,agreed_price,booking_amount,discount_reason,status,requested_by,cancel_reason,units(code),projects(code),customers(full_name,phone),requester:profiles!bookings_requested_by_fkey(display_name)",
+      "id,booking_no,booking_date,project_id,unit_id,lead_id,list_price,agreed_price,booking_amount,discount_reason,status,requested_by,cancel_reason,units(code),projects(code),customers(full_name,phone),requester:profiles!bookings_requested_by_fkey(display_name),sales_contracts(id,contract_no,status)",
     )
     .order("created_at", { ascending: false })
     .limit(300);
@@ -88,6 +90,7 @@ export default async function Bookings({
             {bookings.map((b) => {
               const discount = Math.max(0, Number(b.list_price ?? 0) - Number(b.agreed_price));
               const customer = one(b.customers);
+              const live = (b.sales_contracts ?? []).find((k) => k.status !== "CANCELLED");
               return (
                 <TR key={b.id}>
                   <TD>
@@ -160,6 +163,34 @@ export default async function Bookings({
                             {s.reject}
                           </SubmitButton>
                         </form>
+                      )
+                    ) : null}
+                    {b.status === "CONFIRMED" ? (
+                      live ? (
+                        <Link
+                          href={`/${locale}/app/sales/contracts/${live.id}`}
+                          className="font-mono text-[12px] text-brand hover:underline"
+                        >
+                          {live.contract_no} · {label(t.status.contract, live.status)}
+                        </Link>
+                      ) : (
+                        <Sheet
+                          title={s.contract.create}
+                          description={s.contract.createHint}
+                          triggerLabel={s.contract.create}
+                          triggerIcon={<FileSignature />}
+                          triggerVariant="secondary"
+                          triggerSize="xs"
+                          width="lg"
+                        >
+                          <ContractTermsForm
+                            t={t}
+                            action={createContract}
+                            hidden={{ locale, return_to: back, booking_id: b.id }}
+                            values={{ contract_price: b.agreed_price }}
+                            submitLabel={s.contract.create}
+                          />
+                        </Sheet>
                       )
                     ) : null}
                   </TD>

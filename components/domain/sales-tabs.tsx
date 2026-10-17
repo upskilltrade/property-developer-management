@@ -9,13 +9,22 @@ export function SalesTabs({
   labels,
 }: {
   base: string;
-  labels: { pipeline: string; leads: string; inventory: string; bookings: string };
+  labels: {
+    pipeline: string;
+    leads: string;
+    inventory: string;
+    bookings: string;
+    contracts: string;
+    customers: string;
+  };
 }) {
   const pathname = usePathname();
   const project = useSearchParams().get("project");
   const q = project ? `?project=${project}` : "";
   const section = pathname.slice(base.length).split("/")[1] ?? "";
-  const active = ["leads", "inventory", "bookings"].includes(section) ? section : "pipeline";
+  const active = ["leads", "inventory", "bookings", "contracts", "customers"].includes(section)
+    ? section
+    : "pipeline";
   return (
     <Tabs
       active={active}
@@ -24,6 +33,8 @@ export function SalesTabs({
         { key: "leads", label: labels.leads, href: `${base}/leads${q}` },
         { key: "inventory", label: labels.inventory, href: `${base}/inventory${q}` },
         { key: "bookings", label: labels.bookings, href: `${base}/bookings${q}` },
+        { key: "contracts", label: labels.contracts, href: `${base}/contracts${q}` },
+        { key: "customers", label: labels.customers, href: `${base}/customers` },
       ]}
     />
   );
