@@ -32,3 +32,22 @@ export async function submitPaymentEvidence(fd: FormData) {
   revalidatePath(back);
   redirect(withFlash(back, "saved", "evidence"));
 }
+
+/** Customer approves, or requests a change to, a released drawing revision or a published selection. */
+export async function decideDesign(fd: FormData) {
+  const locale = formLocale(fd);
+  const back = `/${locale}/app/customer`;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("customer_decide", {
+    entity_type: str(fd, "entity_type"),
+    entity_id: str(fd, "entity_id"),
+    decision: str(fd, "decision") === "approve" ? "APPROVED" : "CHANGE_REQUESTED",
+    comment: optStr(fd, "comment"),
+  });
+  if (error)
+    redirect(
+      withFlash(back, "error", error.message.includes("Comment") ? "commentRequired" : "invalid"),
+    );
+  revalidatePath(back);
+  redirect(withFlash(back, "saved", "decision"));
+}
