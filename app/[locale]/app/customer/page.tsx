@@ -187,6 +187,23 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
     ? await supabase.storage.from("handover-files").createSignedUrls(handoverPaths, 600)
     : { data: [] };
   const handoverUrl = new Map((handoverUrls ?? []).map((x) => [x.path, x.signedUrl]));
+  // Design Studio renders staff shared with this buyer (RLS returns only shared ones).
+  const { data: renderRows } = await supabase
+    .from("design_renders")
+    .select("id,unit_id,scene,output_path")
+    .eq("customer_visible", true)
+    .is("archived_at", null)
+    .order("created_at", { ascending: false })
+    .limit(60);
+  const renderPaths = (renderRows ?? []).map((r) => r.output_path);
+  const { data: renderUrls } = renderPaths.length
+    ? await supabase.storage.from("design-renders").createSignedUrls(renderPaths, 3600)
+    : { data: [] };
+  const renderUrl = new Map((renderUrls ?? []).map((x) => [x.path, x.signedUrl]));
+  const rendersFor = (unitId: string) =>
+    (renderRows ?? [])
+      .filter((r) => r.unit_id === unitId && renderUrl.get(r.output_path))
+      .map((r) => ({ id: r.id, scene: r.scene, url: renderUrl.get(r.output_path)! }));
   const todayIso = new Date().toISOString().slice(0, 10);
   const homeFor = (unitId: string) => {
     const ho = (handovers ?? []).find((x) => x.unit_id === unitId);
@@ -311,6 +328,33 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
                   {...home}
                   actions={{ reportObservation, acceptHome, requestService, confirmService }}
                 />
+              ) : null;
+            })()}
+            {(() => {
+              const renders = rendersFor(u.unit_id);
+              return renders.length ? (
+                <Panel
+                  title={c.renders}
+                  bodyClassName="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3"
+                >
+                  {renders.map((r) => (
+                    <a
+                      key={r.id}
+                      href={r.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="overflow-hidden rounded-md border border-line bg-slate-100"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={r.url}
+                        alt={t.studio.scenes[r.scene as keyof typeof t.studio.scenes] ?? r.scene}
+                        className="aspect-[4/3] w-full object-cover"
+                        loading="lazy"
+                      />
+                    </a>
+                  ))}
+                </Panel>
               ) : null;
             })()}
             <div className="rounded-lg border border-line bg-surface p-5 shadow-xs">
