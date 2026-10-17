@@ -4,6 +4,15 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formLocale, num, optStr, str, withFlash } from "@/lib/form";
+import { toNumber } from "@/lib/format";
+import {
+  AI_MODEL,
+  aiConfigured,
+  aiErrorKey,
+  imageTypes,
+  reviewProgressPhotos,
+  type AiImage,
+} from "@/lib/ai";
 
 /** Maps RPC exceptions to flash keys the toast can explain. */
 function errorKey(message: string | undefined) {
@@ -119,4 +128,92 @@ export async function voidPhoto(fd: FormData) {
     reason,
   });
   finish(error, "void");
+}
+
+const MAX_REVIEW_PHOTOS = 6;
+const MAX_PHOTO_BYTES = 4_500_000;
+
+/**
+ * Second opinion from AI on whether the photos support the reported percent. Only verifiers may
+ * run it (save_photo_review checks), and the result is advice: verification stays manual.
+ */
+export async function reviewPhotosWithAi(fd: FormData) {
+  const { supabase, back } = await context(fd);
+  const fail = (key: string): never => redirect(withFlash(back, "error", `ai_${key}`));
+  if (!aiConfigured()) fail("not_configured");
+  const updateId = str(fd, "update_id");
+  const { data: canApprove } = await supabase.rpc("can_schedule", {
+    target_project: str(fd, "project_id"),
+    target_action: "APPROVE",
+  });
+  if (canApprove !== true) redirect(withFlash(back, "error", "permission"));
+
+  const [{ data: update }, { data: photos }] = await Promise.all([
+    supabase
+      .from("progress_updates")
+      .select(
+        "id,reported_percent,note,schedule_activities(name_th,name_en,stage,verified_percent)",
+      )
+      .eq("id", updateId)
+      .maybeSingle(),
+    supabase
+      .from("activity_photos")
+      .select("storage_path")
+      .eq("progress_update_id", updateId)
+      .is("voided_at", null)
+      .order("uploaded_at")
+      .limit(MAX_REVIEW_PHOTOS),
+  ]);
+  if (!update) redirect(withFlash(back, "error", "invalid"));
+  const images: AiImage[] = [];
+  for (const p of photos ?? []) {
+    const { data: blob } = await supabase.storage.from("site-photos").download(p.storage_path);
+    if (!blob || blob.size > MAX_PHOTO_BYTES || !imageTypes.has(blob.type)) continue;
+    images.push({
+      media_type: blob.type as AiImage["media_type"],
+      data: Buffer.from(await blob.arrayBuffer()).toString("base64"),
+    });
+  }
+  if (!images.length) fail("no_photos");
+
+  const activity = (
+    Array.isArray(update.schedule_activities)
+      ? update.schedule_activities[0]
+      : update.schedule_activities
+  ) as {
+    name_th: string;
+    name_en: string;
+    stage: string;
+    verified_percent: unknown;
+  } | null;
+  let result: Awaited<ReturnType<typeof reviewProgressPhotos>> | null = null;
+  let errorKeyAi: string | null = null;
+  try {
+    result = await reviewProgressPhotos({
+      activity: `${activity?.name_th ?? ""} / ${activity?.name_en ?? ""}`,
+      stage: activity?.stage ?? "",
+      reportedPercent: toNumber(update.reported_percent),
+      previousVerified: toNumber(activity?.verified_percent),
+      note: update.note,
+      images,
+    });
+  } catch (e) {
+    console.error("photo review failed", e);
+    errorKeyAi = aiErrorKey(e);
+  }
+  await supabase.rpc("log_assistant_turn", {
+    question_text: `[photo-review] ${updateId}`,
+    tools_used: ["photo_review"],
+    tokens_in: result?.usage.input_tokens ?? 0,
+    tokens_out: result?.usage.output_tokens ?? 0,
+    stop: result ? "end_turn" : (errorKeyAi ?? "error"),
+  });
+  if (!result) return fail(errorKeyAi ?? "generic");
+  const { error } = await supabase.rpc("save_photo_review", {
+    target_update: updateId,
+    review: { ...result.review, photo_count: images.length, model: AI_MODEL },
+  });
+  if (error) redirect(withFlash(back, "error", errorKey(error.message)));
+  revalidatePath(back);
+  redirect(withFlash(back, "saved", "aiReview"));
 }

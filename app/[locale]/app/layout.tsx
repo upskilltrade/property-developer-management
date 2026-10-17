@@ -153,6 +153,12 @@ export default async function AppLayout({
               handoverDone: t.flash.handoverDone,
               notHandedOver: t.flash.notHandedOver,
               lineIdRequired: t.flash.lineIdRequired,
+              ai_not_configured: t.flash.ai_not_configured,
+              ai_no_photos: t.flash.ai_no_photos,
+              ai_refusal: t.flash.ai_refusal,
+              ai_auth: t.flash.ai_auth,
+              ai_rate_limit: t.flash.ai_rate_limit,
+              ai_generic: t.flash.ai_generic,
             },
           }}
         />

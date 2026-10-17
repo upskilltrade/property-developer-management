@@ -3,6 +3,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { createClient } from "@/lib/supabase/server";
 import { loadControlCenter, timelineColumns, timelineHref, type ControlData } from "@/lib/control";
 import { toNumber } from "@/lib/format";
+import { AI_MODEL } from "@/lib/ai";
 import { activityColumns, todayIso, weightedProgress, type Activity } from "@/lib/schedule";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
@@ -10,7 +11,7 @@ type One<T> = T | T[] | null | undefined;
 const one = <T>(v: One<T>): T | undefined => (Array.isArray(v) ? v[0] : (v ?? undefined));
 const round = (n: number) => Math.round(n * 100) / 100;
 
-export const ASSISTANT_MODEL = "claude-opus-5-5";
+export const ASSISTANT_MODEL = AI_MODEL;
 
 export const SYSTEM_PROMPT = `You are the management assistant inside DevPropertyPro, an ERP for a property developer building and selling houses in Thailand.
 

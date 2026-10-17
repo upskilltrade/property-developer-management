@@ -11,11 +11,13 @@ import { Panel } from "@/components/ui/panel";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetFooter } from "@/components/ui/sheet";
-import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
+import { Field, Hidden, Input, Textarea } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { buttonClass } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { addQuote, createPo, decideRequest } from "../../actions";
+import { QuoteForm } from "@/components/domain/quote-form";
+import { aiConfigured } from "@/lib/ai";
 
 export const metadata: Metadata = { title: "Purchase request" };
 
@@ -128,42 +130,30 @@ export default async function RequestDetail({
         actions={
           pr.status === "APPROVED" ? (
             <Sheet title={p.addQuote} triggerLabel={p.addQuote} triggerSize="xs">
-              <form action={addQuote} className="space-y-3">
-                <Hidden values={ctx} />
-                <FormGrid>
-                  <Field label={p.supplier} required>
-                    <Select name="partner_id" required>
-                      {(suppliers ?? [])
-                        .filter((s) => !quoted.has(s.id))
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name} ({label(t.status.partnerType, s.partner_type)})
-                          </option>
-                        ))}
-                    </Select>
-                  </Field>
-                  <Field label={p.quoteRef}>
-                    <Input name="quote_ref" />
-                  </Field>
-                </FormGrid>
-                <FormGrid cols={3}>
-                  <Field label={p.amount} required>
-                    <Input name="amount" type="number" min="1" step="any" required />
-                  </Field>
-                  <Field label={p.leadTime}>
-                    <Input name="lead_time_days" type="number" min="0" />
-                  </Field>
-                  <Field label={p.validUntil}>
-                    <Input name="valid_until" type="date" />
-                  </Field>
-                </FormGrid>
-                <Field label={p.note}>
-                  <Textarea name="notes" />
-                </Field>
-                <SheetFooter>
-                  <SubmitButton>{p.addQuote}</SubmitButton>
-                </SheetFooter>
-              </form>
+              <QuoteForm
+                action={addQuote}
+                hidden={ctx}
+                extractUrl={`/${locale}/app/projects/${id}/procurement/extract`}
+                aiEnabled={aiConfigured()}
+                suppliers={(suppliers ?? [])
+                  .filter((s) => !quoted.has(s.id))
+                  .map((s) => ({
+                    id: s.id,
+                    name: s.name,
+                    label: `${s.name} (${label(t.status.partnerType, s.partner_type)})`,
+                  }))}
+                labels={{
+                  supplier: p.supplier,
+                  quoteRef: p.quoteRef,
+                  amount: p.amount,
+                  leadTime: p.leadTime,
+                  validUntil: p.validUntil,
+                  note: p.note,
+                  submit: p.addQuote,
+                  ai: t.aiQuote,
+                  errors: t.assistant.errors,
+                }}
+              />
             </Sheet>
           ) : null
         }
