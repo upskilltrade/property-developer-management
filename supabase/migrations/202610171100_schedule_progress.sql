@@ -6,7 +6,7 @@
 -- ---------------------------------------------------------------- helpers
 
 create or replace function public.try_uuid(value text)
-returns uuid language plpgsql immutable as $$
+returns uuid language plpgsql immutable set search_path = '' as $$
 begin
   return value::uuid;
 exception when others then
@@ -14,7 +14,7 @@ exception when others then
 end $$;
 
 create or replace function public.try_timestamptz(value text)
-returns timestamptz language plpgsql stable as $$
+returns timestamptz language plpgsql stable set search_path = '' as $$
 begin
   return value::timestamptz;
 exception when others then

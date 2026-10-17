@@ -46,7 +46,7 @@ export function Gantt({
   const today = todayIso();
   const all = groups.flatMap((g) => g.activities);
   const { start, days } = timelineRange(all, today);
-  const pxPerDay = zoom === "week" ? 16 : 4;
+  const pxPerDay = zoom === "week" ? 16 : 5;
   const width = days * pxPerDay;
   const x = (iso: string | null | undefined) => {
     const t = parseDate(iso);
@@ -70,8 +70,11 @@ export function Gantt({
   });
   for (let d = 0; d <= days; d++) {
     const date = new Date(start + d * DAY_MS);
-    if (date.getUTCDate() === 1 || d === 0)
+    if (date.getUTCDate() === 1 || d === 0) {
+      // Drop the partial first month's label when the next month starts right after it.
+      if (months.length === 1 && d * pxPerDay - months[0].left < 56) months.pop();
       months.push({ left: d * pxPerDay, label: fmtMonth.format(date) });
+    }
     if (zoom === "week" && date.getUTCDay() === 1) weeks.push(d * pxPerDay);
   }
 
@@ -165,10 +168,18 @@ export function Gantt({
             aria-hidden
           >
             {weeks.map((w) => (
-              <span key={w} className="absolute inset-y-0 border-l border-line/50" style={{ left: w }} />
+              <span
+                key={w}
+                className="absolute inset-y-0 border-l border-line/50"
+                style={{ left: w }}
+              />
             ))}
             {months.map((m) => (
-              <span key={m.left} className="absolute inset-y-0 border-l border-line" style={{ left: m.left }} />
+              <span
+                key={m.left}
+                className="absolute inset-y-0 border-l border-line"
+                style={{ left: m.left }}
+              />
             ))}
             <span
               className="absolute inset-y-0 z-10 border-l-2 border-red-500/70"
@@ -189,7 +200,9 @@ export function Gantt({
                   ) : (
                     <span className="truncate">{g.label}</span>
                   )}
-                  {g.summary ? <span className="ml-auto shrink-0 font-normal">{g.summary}</span> : null}
+                  {g.summary ? (
+                    <span className="ml-auto shrink-0 font-normal">{g.summary}</span>
+                  ) : null}
                 </div>
                 <div className="shrink-0" style={{ width }} />
               </summary>

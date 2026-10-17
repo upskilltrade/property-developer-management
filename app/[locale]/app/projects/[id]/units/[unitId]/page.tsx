@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Pencil } from "lucide-react";
+import { ArrowLeft, CalendarRange, Pencil } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -37,6 +37,11 @@ export default async function Unit360({
     .eq("project_id", id)
     .maybeSingle();
   if (!u) notFound();
+  // With a schedule, construction progress is derived from verified activities, not typed in.
+  const { count: scheduleCount } = await supabase
+    .from("schedule_activities")
+    .select("id", { count: "exact", head: true })
+    .eq("unit_id", unitId);
 
   const plot = one(u.plots);
   const houseType = one(u.house_types);
@@ -72,6 +77,13 @@ export default async function Unit360({
             <Badge tone={toneOf(u.status)}>{label(t.status.unit, u.status)}</Badge>
           </div>
         </div>
+        <Link
+          href={`/${locale}/app/projects/${id}/units/${unitId}/schedule`}
+          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 text-[13px] font-medium hover:bg-subtle"
+        >
+          <CalendarRange className="size-4" />
+          {t.nav.schedule}
+        </Link>
       </div>
 
       <KpiStrip cols={5}>
@@ -213,56 +225,65 @@ export default async function Unit360({
         <Panel
           title={t.unit.construction}
           actions={
-            <Sheet
-              title={t.unit.editConstruction}
-              triggerLabel={t.common.edit}
-              triggerIcon={editIcon}
-              triggerVariant="ghost"
-              triggerSize="xs"
-            >
-              <form action={saveConstruction} className="space-y-3">
-                {hidden}
-                <FormGrid>
-                  <Field label={t.unit.fields.stage}>
-                    <Select name="stage" defaultValue={con?.stage ?? "NOT_STARTED"}>
-                      {constructionStages.map((s) => (
-                        <option key={s} value={s}>
-                          {t.status.stage[s]}
-                        </option>
-                      ))}
-                    </Select>
+            scheduleCount ? (
+              <Link
+                href={`/${locale}/app/projects/${id}/units/${unitId}/schedule`}
+                className="text-2xs font-medium text-brand hover:underline"
+              >
+                {t.schedule.openSchedule} →
+              </Link>
+            ) : (
+              <Sheet
+                title={t.unit.editConstruction}
+                triggerLabel={t.common.edit}
+                triggerIcon={editIcon}
+                triggerVariant="ghost"
+                triggerSize="xs"
+              >
+                <form action={saveConstruction} className="space-y-3">
+                  {hidden}
+                  <FormGrid>
+                    <Field label={t.unit.fields.stage}>
+                      <Select name="stage" defaultValue={con?.stage ?? "NOT_STARTED"}>
+                        {constructionStages.map((s) => (
+                          <option key={s} value={s}>
+                            {t.status.stage[s]}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label={t.unit.fields.progress}>
+                      <Input
+                        name="progress_percent"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        defaultValue={progress}
+                      />
+                    </Field>
+                  </FormGrid>
+                  <FormGrid>
+                    <Field label={t.unit.fields.startDate}>
+                      <Input name="start_date" type="date" defaultValue={con?.start_date ?? ""} />
+                    </Field>
+                    <Field label={t.unit.fields.targetDate}>
+                      <Input
+                        name="target_completion_date"
+                        type="date"
+                        defaultValue={con?.target_completion_date ?? ""}
+                      />
+                    </Field>
+                  </FormGrid>
+                  <Field label={t.common.notes}>
+                    <Textarea name="notes" defaultValue={con?.notes ?? ""} />
                   </Field>
-                  <Field label={t.unit.fields.progress}>
-                    <Input
-                      name="progress_percent"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      defaultValue={progress}
-                    />
-                  </Field>
-                </FormGrid>
-                <FormGrid>
-                  <Field label={t.unit.fields.startDate}>
-                    <Input name="start_date" type="date" defaultValue={con?.start_date ?? ""} />
-                  </Field>
-                  <Field label={t.unit.fields.targetDate}>
-                    <Input
-                      name="target_completion_date"
-                      type="date"
-                      defaultValue={con?.target_completion_date ?? ""}
-                    />
-                  </Field>
-                </FormGrid>
-                <Field label={t.common.notes}>
-                  <Textarea name="notes" defaultValue={con?.notes ?? ""} />
-                </Field>
-                <SheetFooter>
-                  <SubmitButton>{t.common.save}</SubmitButton>
-                </SheetFooter>
-              </form>
-            </Sheet>
+                  <SheetFooter>
+                    <SubmitButton>{t.common.save}</SubmitButton>
+                  </SheetFooter>
+                </form>
+              </Sheet>
+            )
           }
         >
           <div className="border-b border-line px-4 py-3">

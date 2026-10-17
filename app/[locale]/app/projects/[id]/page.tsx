@@ -22,6 +22,8 @@ import { Field, FormGrid, Hidden, Input, Select } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { cn } from "@/components/ui/cn";
 import { countBy, InventoryBar, InventoryLegend } from "@/components/domain/inventory-bar";
+import { ProgressMatrix } from "@/components/domain/progress-matrix";
+import { activityColumns, type Activity } from "@/lib/schedule";
 import { addUnit } from "./actions";
 
 type One<T> = T | T[] | null | undefined;
@@ -40,19 +42,30 @@ export default async function ProjectOverview({
   const { supabase } = await getSession(locale);
   const base = `/${locale}/app/projects/${id}`;
 
-  const [{ data: project }, { data: unitRows }, { data: phases }, { data: plots }] =
-    await Promise.all([
-      supabase.from("projects").select("organization_id").eq("id", id).single(),
-      supabase
-        .from("units")
-        .select(
-          "id,code,name,status,list_price,phase_id,plots(code,land_area_sqm),house_types(code,name),unit_construction(stage,progress_percent),unit_sales(agreed_price,customers(full_name)),unit_financials(budget_amount,actual_cost)",
-        )
-        .eq("project_id", id)
-        .order("code"),
-      supabase.from("phases").select("id,code,name").eq("project_id", id).order("sequence_no"),
-      supabase.from("plots").select("id,code").eq("project_id", id).order("code"),
-    ]);
+  const [
+    { data: project },
+    { data: unitRows },
+    { data: phases },
+    { data: plots },
+    { data: scheduleRows },
+  ] = await Promise.all([
+    supabase.from("projects").select("organization_id").eq("id", id).single(),
+    supabase
+      .from("units")
+      .select(
+        "id,code,name,status,list_price,phase_id,plots(code,land_area_sqm),house_types(code,name),unit_construction(stage,progress_percent),unit_sales(agreed_price,customers(full_name)),unit_financials(budget_amount,actual_cost)",
+      )
+      .eq("project_id", id)
+      .order("code"),
+    supabase.from("phases").select("id,code,name").eq("project_id", id).order("sequence_no"),
+    supabase.from("plots").select("id,code").eq("project_id", id).order("code"),
+    supabase
+      .from("schedule_activities")
+      .select(activityColumns)
+      .eq("project_id", id)
+      .not("unit_id", "is", null)
+      .order("sequence"),
+  ]);
   const { data: houseTypes } = project
     ? await supabase
         .from("house_types")
@@ -88,6 +101,17 @@ export default async function ProjectOverview({
   const budget = units.reduce((a, u) => a + u.budget, 0);
   const actual = units.reduce((a, u) => a + u.actual, 0);
   const phaseName = new Map((phases ?? []).map((p) => [p.id, p.code]));
+  const actsByUnit = new Map<string, Activity[]>();
+  for (const a of (scheduleRows ?? []) as Activity[])
+    actsByUnit.set(a.unit_id!, [...(actsByUnit.get(a.unit_id!) ?? []), a]);
+  const matrixRows = units
+    .filter((u) => actsByUnit.has(u.id))
+    .map((u) => ({
+      id: u.id,
+      code: u.code,
+      href: `${base}/units/${u.id}/schedule`,
+      activities: actsByUnit.get(u.id)!,
+    }));
 
   const addUnitSheet = (
     <Sheet title={t.project.newUnit} triggerLabel={t.project.newUnit}>
@@ -188,6 +212,34 @@ export default async function ProjectOverview({
           tone={budget && actual > budget ? "negative" : "default"}
         />
       </KpiStrip>
+
+      {matrixRows.length ? (
+        <Panel
+          title={t.schedule.matrix}
+          description={t.schedule.matrixHint}
+          actions={
+            <Link
+              href={`${base}/schedule`}
+              className="text-2xs font-medium text-brand hover:underline"
+            >
+              {t.schedule.openSchedule} →
+            </Link>
+          }
+        >
+          <div className="p-3">
+            <ProgressMatrix
+              rows={matrixRows}
+              stageLabels={t.status.stage}
+              labels={{
+                unit: t.schedule.cols.unit,
+                progress: t.schedule.kpi.progress,
+                delay: t.schedule.delay,
+                days: t.schedule.days,
+              }}
+            />
+          </div>
+        </Panel>
+      ) : null}
 
       <Panel bodyClassName="space-y-3 p-4">
         <InventoryBar counts={counts} labels={t.status.unit} className="h-3" />

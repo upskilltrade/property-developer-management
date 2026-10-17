@@ -39,7 +39,14 @@ export const activityStatuses = [
 ] as const;
 
 /** Stages shown as matrix columns, in construction order. */
-export const scheduleStages = ["FOUNDATION", "STRUCTURE", "ROOF", "MEP", "FINISHING", "INSPECTION"] as const;
+export const scheduleStages = [
+  "FOUNDATION",
+  "STRUCTURE",
+  "ROOF",
+  "MEP",
+  "FINISHING",
+  "INSPECTION",
+] as const;
 
 const DAY = 86_400_000;
 export const parseDate = (v: string | null | undefined) =>
@@ -54,7 +61,8 @@ export const daysBetween = (a: string | null | undefined, b: string | null | und
 export const activityName = (a: { name_th: string; name_en: string }, locale: string) =>
   (locale === "th" ? a.name_th : a.name_en) || a.name_en || a.name_th;
 
-export const isDone = (a: Activity) => a.status === "COMPLETED" || toNumber(a.verified_percent) >= 100;
+export const isDone = (a: Activity) =>
+  a.status === "COMPLETED" || toNumber(a.verified_percent) >= 100;
 
 /**
  * Days late against the untouched baseline. Uses the forecast finish, or today when an unfinished
@@ -88,7 +96,7 @@ export function statusTone(a: Activity, today = todayIso()): Tone {
 /** Weighted verified progress of a set of activities (0–100). */
 export function weightedProgress(acts: Activity[]) {
   const total = acts.reduce((a, x) => a + toNumber(x.weight), 0);
-  if (!total) return acts.length ? acts.filter(isDone).length / acts.length * 100 : 0;
+  if (!total) return acts.length ? (acts.filter(isDone).length / acts.length) * 100 : 0;
   return acts.reduce((a, x) => a + toNumber(x.weight) * toNumber(x.verified_percent), 0) / total;
 }
 
@@ -107,7 +115,13 @@ export function plannedProgress(acts: Activity[], today = todayIso()) {
   return (earned / total) * 100;
 }
 
-export type MatrixCell = { pct: number; weight: number; late: boolean; started: boolean; done: boolean };
+export type MatrixCell = {
+  pct: number;
+  weight: number;
+  late: boolean;
+  started: boolean;
+  done: boolean;
+};
 
 /** Unit × stage grid of weighted verified progress. */
 export function stageMatrix(acts: Activity[], today = todayIso()) {
