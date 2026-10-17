@@ -45,6 +45,18 @@ Reusable activity list per house type: `house_type_id`, `code`, `name_th`, `name
 ### progress_updates (append-only)
 `activity_id`, `report_date`, `reported_percent`, `reported_by`, `verified_percent`, `verified_by`, `verified_at`, `note`, `publication_status` (INTERNAL / PUBLISHED), photo/document references.
 
+### activity_photos
+Every activity (every work category in the template) carries photo evidence.
+
+| Column | Notes |
+|---|---|
+| organization_id, project_id, unit_id, activity_id | required; unit_id null for project-level works |
+| progress_update_id | the report the photo belongs to (null = general site photo for the activity) |
+| storage_path, thumbnail_path | private bucket objects (see §2a) |
+| caption, taken_at, uploaded_by, uploaded_at | taken_at from EXIF when present, else upload time |
+| publication_status | INTERNAL / PUBLISHED — customer sees only PUBLISHED |
+| voided_at, voided_by, void_reason | photos are voided, never hard-deleted (evidence) |
+
 ### Derived (SQL view or RPC)
 - **Unit progress %** = Σ(activity weight × latest verified %) / Σ weight.
 - **Unit current stage** = stage of the earliest activity that is not completed.
@@ -61,6 +73,16 @@ Reusable activity list per house type: `house_type_id`, `code`, `name_th`, `name
 - Edit baseline: PROJECT_MANAGER; re-baseline is audited.
 - Publish to customer: PROJECT_MANAGER / Customer Service.
 - Server functions: `verify_progress(update_id, percent)`, `publish_progress(update_id)`, `apply_schedule_template(unit_id, template_id, start_date)`.
+
+## 2a. Photo storage & upload rules
+
+- Supabase Storage **private** bucket `site-photos`; path `org/project/unit-or-project/activity/update/<uuid>.jpg`. Paths are not authorization (DATA-MODEL §19).
+- Storage policies mirror table RLS: read requires `can_access_project`; write requires report permission on that project.
+- Viewing uses short-lived signed URLs; thumbnails for lists, full image on click.
+- Upload from phone: multiple files at once, opens the camera directly (`accept="image/*" capture="environment"`), works on weak site signal (one file at a time, retry on failure).
+- Client resizes to max 2048 px JPEG (~80%) before upload and creates a ~400 px thumbnail; limit 10 MB per original, images only.
+- **A progress report needs at least 1 photo** (configurable per activity); verification shows the photos next to the reported %.
+- Publishing a progress update to the customer publishes only the photos the verifier selects.
 
 ## 3. Default template — Thai detached house (editable)
 
@@ -98,16 +120,20 @@ Reusable activity list per house type: `house_type_id`, `code`, `name_th`, `name
 ### C. Unit house schedule — new section/tab in Unit 360°
 - Activity table: code, activity, planned dates, forecast/actual dates, status, reported %, verified %, delay.
 - Mini Gantt for the house.
-- Actions: **Report progress** (percent, note, photos) → **Verify** → **Publish to customer**.
+- Actions: **Report progress** (percent, note, photos — at least 1) → **Verify** (photos shown side by side) → **Publish to customer** (choose which photos).
+- **Photo gallery per activity**: thumbnails grouped by activity and date, filter by stage; tap to enlarge with caption, who uploaded and when.
 - Progress history (who reported, who verified, when).
 - "Apply template" when the unit has no schedule yet (pick house-type template + start date).
+
+### C2. Project photo log
+- All photos of the project in one feed, filter by unit, activity/stage, date, published or not — for site meetings and management review.
 
 ### D. Dashboard additions
 - Portfolio: average progress per project, number of late activities, next milestones in 14 days.
 
 ## 5. Delivery order
 
-1. Migration: tables, RLS, derived view, RPCs; seed the default template.
+1. Migration: tables (incl. `activity_photos`), RLS, storage bucket + policies, derived view, RPCs; seed the default template.
 2. Unit house schedule (C) + report/verify flow — this feeds everything else.
 3. Unit progress matrix (B) and refresh of `unit_construction` summary.
 4. Project schedule Gantt (A).
@@ -118,5 +144,6 @@ Reusable activity list per house type: `house_type_id`, `code`, `name_th`, `name
 - All 5 houses' progress visible on one screen, matching verified updates.
 - Reported progress never changes official progress until verified by a different authorized user.
 - Changing a forecast date shows delay against the untouched baseline.
-- Customer view shows only published progress.
+- Customer view shows only published progress and published photos.
+- Every activity can hold photos; a progress report cannot be submitted without the required photo(s); photos open via signed URL only.
 - Thai/English labels, Buddhist Era dates in Thai UI, usable on mobile at site.
