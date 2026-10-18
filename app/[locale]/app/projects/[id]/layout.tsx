@@ -73,6 +73,7 @@ export default async function ProjectLayout({
             handover: t.nav.handover,
             setup: t.nav.setup,
             finance: t.nav.projectFinance,
+            forecast: t.nav.projectForecast,
           }}
         />
       </div>
