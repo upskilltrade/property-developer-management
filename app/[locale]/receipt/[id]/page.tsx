@@ -21,6 +21,7 @@ type ReceiptData = {
   project_name: string;
   organization_name: string;
   customer_name: string | null;
+  imported?: boolean;
 };
 
 /** Printable receipt for a Finance-verified payment; the RPC checks staff or owning customer. */
@@ -85,7 +86,7 @@ export default async function ReceiptPage({
           <span className="text-2xl font-semibold num">{formatMoney(locale, receipt.amount)}</span>
         </div>
         <p className="mt-6 text-2xs text-muted">
-          {r.verifiedAt} {formatDate(locale, receipt.verified_at)}
+          {receipt.imported ? r.imported : r.verifiedAt} {formatDate(locale, receipt.verified_at)}
         </p>
       </article>
     </main>

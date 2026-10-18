@@ -101,7 +101,7 @@ export default async function UnitPayments({
     supabase
       .from("payments")
       .select(
-        "id,schedule_id,amount,paid_on,method,reference,receipt_no,status,reversal_reason,verified_at",
+        "id,schedule_id,amount,paid_on,method,reference,receipt_no,status,reversal_reason,verified_at,imported",
       )
       .eq("unit_id", unitId)
       .order("paid_on", { ascending: false }),
@@ -499,6 +499,11 @@ export default async function UnitPayments({
                         <Receipt className="size-3.5" />
                         {pm.receipt_no}
                       </Link>
+                      {pm.imported ? (
+                        <Badge tone="accent" className="ml-1.5">
+                          {t.importData.badge}
+                        </Badge>
+                      ) : null}
                       <p className="truncate text-[10px] text-muted">
                         {installmentName.get(pm.schedule_id)} ·{" "}
                         {label(t.status.paymentMethod, pm.method)}
