@@ -57,6 +57,12 @@ export default async function AppLayout({
       },
     ],
   });
+  if (session.isInternal)
+    sections[sections.length - 1].items.push({
+      label: t.nav.standards,
+      href: `${base}/settings/standards`,
+      icon: "access",
+    });
   const { count: unread } = await session.supabase
     .from("notifications")
     .select("id", { count: "exact", head: true })
@@ -153,6 +159,9 @@ export default async function AppLayout({
               handoverDone: t.flash.handoverDone,
               notHandedOver: t.flash.notHandedOver,
               lineIdRequired: t.flash.lineIdRequired,
+              referenceRequired: t.flash.referenceRequired,
+              standardNotVerified: t.flash.standardNotVerified,
+              standardDocRequired: t.flash.standardDocRequired,
               ai_not_configured: t.flash.ai_not_configured,
               ai_no_photos: t.flash.ai_no_photos,
               ai_refusal: t.flash.ai_refusal,

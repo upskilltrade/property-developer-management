@@ -31,23 +31,53 @@ export const imageTypes = new Set(["image/jpeg", "image/png", "image/webp", "ima
 
 // ---------------------------------------------------------------- site photo review
 
+const Finding = z.object({
+  basis: z.enum(["SPEC", "TECHNICAL"]),
+  requirement: z.string(),
+  document_code: z.string(),
+  clause: z.string(),
+  observation: z.string(),
+  result: z.enum(["PASS", "FAIL", "UNCLEAR"]),
+});
 const PhotoReview = z.object({
   verdict: z.enum(["CONSISTENT", "QUESTIONABLE", "INSUFFICIENT"]),
   estimated_percent: z.number().nullable(),
+  spec_verdict: z.enum(["PASS", "FAIL", "NOT_ASSESSABLE"]),
+  technical_verdict: z.enum(["PASS", "FAIL", "NOT_ASSESSABLE"]),
+  findings: z.array(Finding),
   summary_th: z.string(),
   summary_en: z.string(),
   concerns: z.array(z.string()),
 });
 export type PhotoReviewResult = z.infer<typeof PhotoReview>;
+export type ReviewFinding = z.infer<typeof Finding> & { reference_ok: boolean };
 
 const PHOTO_PROMPT = `You review construction site photos for a Thai house builder. A site engineer has reported a completion percent for one schedule activity and attached photos. Give the verifying engineer a second opinion; they make the decision.
 
-Judge only what the photos show:
-- CONSISTENT: the photos plausibly show work at roughly the reported percent.
-- QUESTIONABLE: the photos suggest noticeably less (or different) work than reported, or show quality or safety problems worth checking.
-- INSUFFICIENT: the photos are too few, unclear, or don't show this activity well enough to judge.
+You are given the project's verified documents for this kind of work, each introduced by a line "DOCUMENT <code> · <type> · <title>":
+- PROJECT_SPEC (รายการประกอบแบบ) and CONTRACT documents: what this project must build.
+- STANDARD documents: technical and good-practice standards the work must meet.
 
-estimated_percent is your own estimate of completion for this activity from the photos, or null if you can't tell. Write summary_th in Thai and summary_en in English (2-3 sentences each, plain language). List concrete concerns in Thai (for example a visible defect, missing work, or a photo that seems to show a different location); return an empty list if there are none. Never claim certainty you don't have.`;
+Assess in two parts:
+1. SPEC: does the visible work match the project specification and contract (materials, sizes, spacing, layout, workmanship requirements)?
+2. TECHNICAL: is the visible work done correctly by engineering principles and the attached standards?
+
+Rules — these are strict:
+- Every finding must cite a document given here: document_code exactly as written after "DOCUMENT", and clause as the clause, table or page number where the requirement appears. Never cite a standard, clause or number from memory, and never cite a document that was not provided.
+- If no provided document covers something, do not make a finding about it; you may mention it in concerns as "ไม่มีเอกสารอ้างอิง".
+- result is PASS when the photos show the requirement is met, FAIL when they show it is not, UNCLEAR when the photos can't show it.
+- spec_verdict / technical_verdict: FAIL if any finding of that basis failed, PASS if there are findings and all passed, NOT_ASSESSABLE if no documents of that basis were provided or nothing could be judged from the photos.
+- verdict: CONSISTENT when the photos plausibly show work at roughly the reported percent and nothing failed; QUESTIONABLE when progress looks overstated or a finding failed; INSUFFICIENT when the photos can't support a judgement.
+- estimated_percent: your own estimate from the photos, or null.
+- Write requirement, observation and concerns in Thai. summary_th in Thai and summary_en in English, 2-3 sentences each, naming the documents relied on. Never claim certainty you don't have.`;
+
+export type ReviewDocument = {
+  code: string;
+  title: string;
+  docType: string;
+  media_type: "application/pdf";
+  data: string;
+};
 
 export async function reviewProgressPhotos(input: {
   activity: string;
@@ -56,18 +86,32 @@ export async function reviewProgressPhotos(input: {
   previousVerified: number;
   note: string | null;
   images: AiImage[];
+  documents: ReviewDocument[];
 }) {
   const client = new Anthropic();
+  // Documents first (cacheable across reviews of the same project), then photos and the report.
+  const docBlocks = input.documents.flatMap((d, i) => [
+    { type: "text" as const, text: `DOCUMENT ${d.code} · ${d.docType} · ${d.title}` },
+    {
+      type: "document" as const,
+      source: { type: "base64" as const, media_type: d.media_type, data: d.data },
+      title: d.code,
+      ...(i === input.documents.length - 1
+        ? { cache_control: { type: "ephemeral" as const } }
+        : {}),
+    },
+  ]);
   const response = await client.beta.messages.parse({
     model: AI_MODEL,
     max_tokens: 16000,
     system: PHOTO_PROMPT,
-    output_config: { effort: "medium", format: betaZodOutputFormat(PhotoReview) },
+    output_config: { effort: "high", format: betaZodOutputFormat(PhotoReview) },
     ...AI_FALLBACK,
     messages: [
       {
         role: "user",
         content: [
+          ...docBlocks,
           ...input.images.map((img) => ({
             type: "image" as const,
             source: { type: "base64" as const, media_type: img.media_type, data: img.data },
@@ -80,6 +124,7 @@ export async function reviewProgressPhotos(input: {
               `Reported now: ${input.reportedPercent}%`,
               `Site note: ${input.note || "(none)"}`,
               `Photos attached: ${input.images.length}`,
+              `Documents provided: ${input.documents.map((d) => `${d.code} (${d.docType})`).join(", ") || "none"}`,
             ].join("\n"),
           },
         ],
@@ -89,11 +134,35 @@ export async function reviewProgressPhotos(input: {
   if (response.stop_reason === "refusal" || !response.parsed_output) throw new AiRefusalError();
   const review = response.parsed_output;
   const est = review.estimated_percent;
+  // A finding counts only if it cites a document we actually sent; anything else is flagged.
+  const provided = new Map(input.documents.map((d) => [d.code.trim(), d.docType]));
+  const findings: ReviewFinding[] = review.findings.slice(0, 30).map((f) => ({
+    ...f,
+    reference_ok: provided.has(f.document_code.trim()) && f.clause.trim().length > 0,
+  }));
+  // Verdicts are recomputed from the findings that cite a provided document.
+  const basisVerdict = (basis: "SPEC" | "TECHNICAL") => {
+    const types = basis === "SPEC" ? ["PROJECT_SPEC", "CONTRACT"] : ["STANDARD"];
+    if (![...provided.values()].some((t) => types.includes(t))) return "NOT_ASSESSABLE" as const;
+    const valid = findings.filter((f) => f.basis === basis && f.reference_ok);
+    if (valid.some((f) => f.result === "FAIL")) return "FAIL" as const;
+    return valid.some((f) => f.result === "PASS") ? ("PASS" as const) : ("NOT_ASSESSABLE" as const);
+  };
+  const specVerdict = basisVerdict("SPEC");
+  const technicalVerdict = basisVerdict("TECHNICAL");
+  const verdict =
+    review.verdict === "CONSISTENT" && (specVerdict === "FAIL" || technicalVerdict === "FAIL")
+      ? "QUESTIONABLE"
+      : review.verdict;
   return {
     review: {
       ...review,
+      verdict,
       estimated_percent: est == null ? null : Math.max(0, Math.min(100, Math.round(est))),
       concerns: review.concerns.slice(0, 8),
+      findings,
+      spec_verdict: specVerdict,
+      technical_verdict: technicalVerdict,
     },
     usage: response.usage,
   };

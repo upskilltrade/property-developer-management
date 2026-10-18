@@ -30,12 +30,18 @@ export async function recordInspection(fd: FormData) {
   const result = fd.getAll("item_result").map(String);
   const note = fd.getAll("item_note").map(String);
   const severity = fd.getAll("item_severity").map(String);
+  const standard = fd.getAll("item_standard_id").map(String);
+  const clause = fd.getAll("item_clause").map(String);
+  const criterion = fd.getAll("item_criterion").map(String);
   const items = text
     .map((item, i) => ({
       item: item.trim(),
       result: result[i] || "PASS",
       note: note[i],
       severity: severity[i],
+      standard_id: standard[i] || null,
+      clause: clause[i] || null,
+      criterion: criterion[i] || null,
     }))
     .filter((x) => x.item);
   const { error } = await supabase.rpc("record_checklist_inspection", {
@@ -122,11 +128,13 @@ export async function saveWarrantyType(fd: FormData) {
 
 export async function saveChecklist(fd: FormData) {
   const { supabase, finish } = await ctx(fd);
-  const items = str(fd, "items")
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean)
-    .map((item) => ({ item }));
+  let items: unknown[] = [];
+  try {
+    const parsed = JSON.parse(str(fd, "items") || "[]");
+    items = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    items = [];
+  }
   const { error } = await supabase.rpc("save_checklist_template", {
     target_org: str(fd, "organization_id"),
     data: { code: str(fd, "code"), name: str(fd, "name"), purpose: str(fd, "purpose"), items },
