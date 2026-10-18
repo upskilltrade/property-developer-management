@@ -24,7 +24,7 @@ export function Sheet({
   description?: ReactNode;
   triggerLabel: ReactNode;
   triggerIcon?: ReactNode;
-  triggerVariant?: "primary" | "secondary" | "ghost";
+  triggerVariant?: "primary" | "secondary" | "ghost" | "danger";
   triggerSize?: "xs" | "sm" | "md";
   width?: "md" | "lg";
   children: ReactNode;

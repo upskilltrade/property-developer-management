@@ -117,6 +117,8 @@ export default async function AppLayout({
               hasSchedule: t.flash.hasSchedule,
               number: t.flash.number,
               pctRange: t.flash.pctRange,
+              confirmCode: t.flash.confirmCode,
+              unitDelete: t.flash.unitDelete,
               noAccount: t.flash.noAccount,
               noCustomerForSchedule: t.flash.noCustomerForSchedule,
               scheduleHasPayments: t.flash.scheduleHasPayments,

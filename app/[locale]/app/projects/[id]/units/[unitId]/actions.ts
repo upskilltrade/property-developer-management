@@ -140,3 +140,36 @@ export async function linkCustomerAccount(fd: FormData) {
   if (error?.message.includes("Not authorized")) redirect(withFlash(back, "error", "permission"));
   done(error, "link");
 }
+
+/**
+ * Deletes the house and everything that belongs to it (see delete_unit), then removes its files
+ * from Storage. Files that fail to delete stay queued in storage_purge_queue for a retry.
+ */
+export async function deleteUnit(fd: FormData) {
+  const { projectId, unitId, supabase, back } = await context(fd);
+  const locale = formLocale(fd);
+  const { data, error } = await supabase.rpc("delete_unit", {
+    target_unit: unitId,
+    confirm_code: str(fd, "confirm_code"),
+  });
+  if (error)
+    redirect(
+      withFlash(
+        back,
+        "error",
+        error.message.includes("Confirmation") ? "confirmCode" : "unitDelete",
+      ),
+    );
+  const files = (data ?? []) as { id: string; bucket: string; path: string }[];
+  const byBucket = new Map<string, typeof files>();
+  for (const f of files) byBucket.set(f.bucket, [...(byBucket.get(f.bucket) ?? []), f]);
+  const purged: string[] = [];
+  for (const [bucket, list] of byBucket) {
+    const { data: removed } = await supabase.storage.from(bucket).remove(list.map((f) => f.path));
+    const gone = new Set((removed ?? []).map((o) => o.name));
+    purged.push(...list.filter((f) => gone.has(f.path)).map((f) => f.id));
+  }
+  if (purged.length) await supabase.rpc("mark_files_purged", { target_ids: purged });
+  revalidatePath(`/${locale}/app`, "layout");
+  redirect(withFlash(`/${locale}/app/projects/${projectId}`, "saved", "unitDeleted"));
+}
