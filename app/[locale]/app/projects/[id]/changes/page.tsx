@@ -5,10 +5,12 @@ import { GitPullRequestArrow, MessageSquarePlus } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, formatNumber, toNumber } from "@/lib/format";
 import { crSources, crTone, VO_VERSION_COLUMNS, voTone } from "@/lib/variations";
 import { Panel } from "@/components/ui/panel";
-import { Table, TD, TH, THead, TR } from "@/components/ui/table";
+import { Table, TD, TFoot, TH, THead, TR } from "@/components/ui/table";
+import { Tabs } from "@/components/ui/tabs";
+import { type VoItemRow } from "@/components/domain/vo-items-table";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetFooter } from "@/components/ui/sheet";
 import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
@@ -22,9 +24,12 @@ export const metadata: Metadata = { title: "Changes" };
 /** Change control for one project: incoming change requests and the variation orders made from them. */
 export default async function ProjectChanges({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string; id: string }>;
+  searchParams: Promise<{ view?: string }>;
 }) {
+  const view = (await searchParams).view === "register" ? "register" : "main";
   const { locale, t } = await resolveLocale(params);
   const { id } = await params;
   const { supabase } = await getSession(locale);
@@ -82,9 +87,246 @@ export default async function ProjectChanges({
       (x) => x.vo_id === voId && x.version === v,
     )?.cost_delta;
   const ctx = { locale, return_to: base, project_id: id };
+  const tabs = (
+    <Tabs
+      active={view}
+      items={[
+        { key: "main", label: c.views.main, href: base },
+        { key: "register", label: c.views.register, href: `${base}?view=register` },
+      ]}
+    />
+  );
+
+  if (view === "register") {
+    // Approved = agreed with the buyer (or internally, for internal VOs); cancelled and rejected
+    // VOs drop out. Each VO counts at its approved version, otherwise its current draft.
+    const isApproved = (v: { status: string; customer_facing: boolean }) =>
+      ["CUSTOMER_APPROVED", "RELEASED", "CLOSED"].includes(v.status) ||
+      (!v.customer_facing && v.status === "INTERNAL_APPROVED");
+    const live = (vos ?? []).filter((v) => !["CANCELLED", "CUSTOMER_REJECTED"].includes(v.status));
+    const picked = live
+      .map((v) => {
+        const approved = isApproved(v);
+        const x = versionOf(
+          v.id,
+          approved ? (v.approved_version ?? v.current_version) : v.current_version,
+        );
+        return x ? { vo: v, approved, version: x } : null;
+      })
+      .filter(Boolean) as {
+      vo: NonNullable<typeof vos>[number];
+      approved: boolean;
+      version: NonNullable<typeof versions>[number];
+    }[];
+    const ids = picked.map((p) => p.version.id);
+    const { data: itemRows } = ids.length
+      ? await supabase
+          .from("vo_items")
+          .select("id,vo_version_id,seq,kind,description,quantity,unit,unit_price,amount")
+          .in("vo_version_id", ids)
+      : { data: [] };
+    const items = (itemRows ?? []) as (VoItemRow & { vo_version_id: string })[];
+    type Line = {
+      key: string;
+      voId: string;
+      voNo: string;
+      unitId: string | null;
+      status: string;
+      approved: boolean;
+      kind: "ADD" | "OMIT";
+      description: string;
+      qty: string;
+      amount: number;
+    };
+    const lines: Line[] = picked.flatMap((p) => {
+      const own = items.filter((i) => i.vo_version_id === p.version.id);
+      const base = {
+        voId: p.vo.id,
+        voNo: p.vo.vo_no,
+        unitId: p.vo.unit_id,
+        status: p.vo.status,
+        approved: p.approved,
+      };
+      if (own.length)
+        return own
+          .sort((a, b) => a.seq - b.seq)
+          .map((i) => ({
+            ...base,
+            key: i.id,
+            kind: i.kind as "ADD" | "OMIT",
+            description: i.description,
+            qty: `${formatNumber(locale, i.quantity, 2)} ${i.unit ?? ""}`,
+            amount: toNumber(i.amount),
+          }));
+      // No breakdown: the version's lump-sum price change stands in as one line.
+      const lump = toNumber(p.version.price_delta);
+      return lump
+        ? [
+            {
+              ...base,
+              key: p.version.id,
+              kind: lump >= 0 ? "ADD" : "OMIT",
+              description: `${p.vo.title} (${c.noItems})`,
+              qty: "—",
+              amount: Math.abs(lump),
+            },
+          ]
+        : [];
+    });
+    const unitKeys = [...new Set(lines.map((l) => l.unitId ?? ""))].sort((a, b) =>
+      (unitCode.get(a) ?? "~").localeCompare(unitCode.get(b) ?? "~"),
+    );
+    const total = (ls: Line[], kind?: "ADD" | "OMIT") =>
+      ls
+        .filter((l) => !kind || l.kind === kind)
+        .reduce(
+          (a, l) => a + (l.kind === "ADD" ? l.amount : -l.amount) * (kind === "OMIT" ? -1 : 1),
+          0,
+        );
+    const rows = unitKeys.map((u) => {
+      const ls = lines.filter((l) => (l.unitId ?? "") === u);
+      const ap = ls.filter((l) => l.approved);
+      return {
+        unit: u,
+        add: total(ap, "ADD"),
+        omit: total(ap, "OMIT"),
+        net: total(ap),
+        pending: total(ls.filter((l) => !l.approved)),
+        count: new Set(ls.map((l) => l.voId)).size,
+      };
+    });
+    const sumRows = (k: "add" | "omit" | "net" | "pending") => rows.reduce((a, r) => a + r[k], 0);
+    return (
+      <div className="space-y-4">
+        {tabs}
+        <Panel title={c.views.register} description={c.registerHint}>
+          {rows.length ? (
+            <Table>
+              <THead>
+                <tr>
+                  <TH>{c.unit}</TH>
+                  <TH align="right">
+                    {c.approved} · {c.totalAdd}
+                  </TH>
+                  <TH align="right">
+                    {c.approved} · {c.totalOmit}
+                  </TH>
+                  <TH align="right">
+                    {c.approved} · {c.net}
+                  </TH>
+                  <TH align="right">
+                    {c.pending} · {c.net}
+                  </TH>
+                  <TH align="right">{c.voCount}</TH>
+                </tr>
+              </THead>
+              <tbody>
+                {rows.map((r) => (
+                  <TR key={r.unit || "project"}>
+                    <TD className="font-mono text-[12px]">
+                      {r.unit ? unitCode.get(r.unit) : c.noUnit}
+                    </TD>
+                    <TD align="right" className="text-emerald-700 num">
+                      +{formatMoney(locale, r.add)}
+                    </TD>
+                    <TD align="right" className="text-red-700 num">
+                      −{formatMoney(locale, r.omit)}
+                    </TD>
+                    <TD align="right" className="font-semibold num">
+                      {formatMoney(locale, r.net)}
+                    </TD>
+                    <TD align="right" className="text-muted num">
+                      {formatMoney(locale, r.pending)}
+                    </TD>
+                    <TD align="right" className="num">
+                      {r.count}
+                    </TD>
+                  </TR>
+                ))}
+              </tbody>
+              <TFoot>
+                <tr>
+                  <TD className="font-medium">{c.net}</TD>
+                  <TD align="right" className="font-semibold text-emerald-700 num">
+                    +{formatMoney(locale, sumRows("add"))}
+                  </TD>
+                  <TD align="right" className="font-semibold text-red-700 num">
+                    −{formatMoney(locale, sumRows("omit"))}
+                  </TD>
+                  <TD align="right" className="font-semibold num">
+                    {formatMoney(locale, sumRows("net"))}
+                  </TD>
+                  <TD align="right" className="text-muted num">
+                    {formatMoney(locale, sumRows("pending"))}
+                  </TD>
+                  <TD />
+                </tr>
+              </TFoot>
+            </Table>
+          ) : (
+            <EmptyState icon={<GitPullRequestArrow />} title={c.noVariations} />
+          )}
+        </Panel>
+        {lines.length ? (
+          <Panel title={c.allItems}>
+            <Table>
+              <THead>
+                <tr>
+                  <TH>{c.voNo}</TH>
+                  <TH>{c.unit}</TH>
+                  <TH />
+                  <TH>{c.itemDesc}</TH>
+                  <TH align="right">{c.qty}</TH>
+                  <TH align="right">{c.amount}</TH>
+                  <TH>{t.common.status}</TH>
+                </tr>
+              </THead>
+              <tbody>
+                {lines.map((l) => (
+                  <TR key={l.key}>
+                    <TD>
+                      <Link
+                        href={`${base}/${l.voId}`}
+                        className="font-mono text-[12px] font-semibold hover:text-brand hover:underline"
+                      >
+                        {l.voNo}
+                      </Link>
+                    </TD>
+                    <TD className="font-mono text-[12px] text-muted">
+                      {l.unitId ? unitCode.get(l.unitId) : c.noUnit}
+                    </TD>
+                    <TD>
+                      <Badge tone={l.kind === "ADD" ? "success" : "danger"}>{c.kind[l.kind]}</Badge>
+                    </TD>
+                    <TD>{l.description}</TD>
+                    <TD align="right" className="text-muted num">
+                      {l.qty}
+                    </TD>
+                    <TD
+                      align="right"
+                      className={l.kind === "ADD" ? "text-emerald-700 num" : "text-red-700 num"}
+                    >
+                      {l.kind === "OMIT" ? "−" : "+"}
+                      {formatMoney(locale, l.amount)}
+                    </TD>
+                    <TD>
+                      <Badge tone={voTone[l.status] ?? "neutral"}>
+                        {label(t.status.vo, l.status)}
+                      </Badge>
+                    </TD>
+                  </TR>
+                ))}
+              </tbody>
+            </Table>
+          </Panel>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
+      {tabs}
       <Panel
         title={c.requests}
         actions={

@@ -6,6 +6,16 @@ import { voErrorKey } from "@/lib/variations";
 
 const ctx = (fd: FormData) => siteContext(fd, (locale) => `/${locale}/app/projects`, voErrorKey);
 
+/** Additions / omissions from the items editor; the database validates each row. */
+function parseItems(raw: string) {
+  try {
+    const items = JSON.parse(raw || "[]");
+    return Array.isArray(items) && items.length ? items.slice(0, 200) : null;
+  } catch {
+    return null;
+  }
+}
+
 const voData = (fd: FormData) => ({
   title: str(fd, "title"),
   unit_id: str(fd, "unit_id"),
@@ -20,6 +30,7 @@ const voData = (fd: FormData) => ({
   customer_facing: fd.get("customer_facing") === "on",
   requires_payment_before_release: fd.get("requires_payment_before_release") === "on",
   payment_due_days: str(fd, "payment_due_days"),
+  items: parseItems(str(fd, "items")),
 });
 
 export async function logRequest(fd: FormData) {

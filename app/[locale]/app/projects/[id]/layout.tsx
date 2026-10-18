@@ -71,7 +71,6 @@ export default async function ProjectLayout({
             changes: t.nav.changes,
             procurement: t.nav.procurement,
             handover: t.nav.handover,
-            studio: t.nav.studio,
             setup: t.nav.setup,
             finance: t.nav.projectFinance,
           }}

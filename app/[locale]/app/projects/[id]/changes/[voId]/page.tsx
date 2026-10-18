@@ -14,6 +14,7 @@ import { Field, Hidden, Input, Select } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { buttonClass } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { VoItemsTable, type VoItemRow } from "@/components/domain/vo-items-table";
 import { VariationForm } from "@/components/domain/variation-form";
 import {
   approveVariation,
@@ -90,6 +91,17 @@ export default async function VariationDetail({
       .eq("project_id", id)
       .eq("status", "ACTIVE"),
   ]);
+  const versionIds = (versions ?? []).map((x) => x.id);
+  const { data: itemRows } = versionIds.length
+    ? await supabase
+        .from("vo_items")
+        .select("id,vo_version_id,seq,kind,description,quantity,unit,unit_price,amount")
+        .in("vo_version_id", versionIds)
+    : { data: [] };
+  const itemsOf = (versionId: string) =>
+    ((itemRows ?? []) as (VoItemRow & { vo_version_id: string })[]).filter(
+      (i) => i.vo_version_id === versionId,
+    );
   const one = <T,>(v: T | T[] | null) => (Array.isArray(v) ? v[0] : v);
   const cost = (v: number) =>
     ((costs ?? []) as { vo_id: string; version: number; cost_delta: number }[]).find(
@@ -163,6 +175,17 @@ export default async function VariationDetail({
                   time_delta_days: current?.time_delta_days,
                   partner_id: vo.partner_id,
                   requires_payment_before_release: vo.requires_payment_before_release,
+                  items: current
+                    ? itemsOf(current.id)
+                        .sort((a, b) => a.seq - b.seq)
+                        .map((i) => ({
+                          kind: i.kind as "ADD" | "OMIT",
+                          description: i.description,
+                          quantity: i.quantity,
+                          unit: i.unit,
+                          unit_price: i.unit_price,
+                        }))
+                    : [],
                 }}
                 revise
                 submitLabel={c.revise}
@@ -279,6 +302,9 @@ export default async function VariationDetail({
                         <dd className="num">{x.time_delta_days}</dd>
                       </div>
                     </dl>
+                    {itemsOf(x.id).length ? (
+                      <VoItemsTable locale={locale} items={itemsOf(x.id)} labels={c} />
+                    ) : null}
                     {x.note ? <p className="text-2xs text-muted">{x.note}</p> : null}
                   </li>
                 );

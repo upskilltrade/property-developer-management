@@ -7,7 +7,6 @@ const sections = [
   "schedule",
   "photos",
   "design",
-  "studio",
   "site",
   "changes",
   "procurement",

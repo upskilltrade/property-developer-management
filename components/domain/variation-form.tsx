@@ -2,6 +2,7 @@ import type { Dictionary } from "@/lib/i18n/dictionaries/th";
 import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
 import { SheetFooter } from "@/components/ui/sheet";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { VoItemsEditor, type VoItem } from "@/components/domain/vo-items-editor";
 
 type Option = { id: string; label: string };
 export type VariationValues = {
@@ -16,6 +17,7 @@ export type VariationValues = {
   customer_facing?: boolean;
   requires_payment_before_release?: boolean;
   payment_due_days?: number | null;
+  items?: VoItem[];
 };
 
 /** Variation order scope and impacts. Used to create a VO, and (revise) to append a new version. */
@@ -67,8 +69,9 @@ export function VariationForm({
           <Textarea name="revised_scope" required defaultValue={values.revised_scope ?? ""} />
         </Field>
       </FormGrid>
+      <VoItemsEditor labels={c} initial={values.items} />
       <FormGrid cols={3}>
-        <Field label={c.priceDelta}>
+        <Field label={c.priceDelta} hint={c.priceFromItems}>
           <Input
             name="price_delta"
             type="number"
