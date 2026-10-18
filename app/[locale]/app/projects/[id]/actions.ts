@@ -29,14 +29,12 @@ export async function addPhase(fd: FormData) {
   const phaseCode = code(fd, "code");
   const name = str(fd, "name");
   if (!phaseCode || !name) redirect(withFlash(back, "error", "invalid"));
-  const { error } = await supabase
-    .from("phases")
-    .insert({
-      project_id: projectId,
-      code: phaseCode,
-      name,
-      sequence_no: num(fd, "sequence_no") ?? 1,
-    });
+  const { error } = await supabase.from("phases").insert({
+    project_id: projectId,
+    code: phaseCode,
+    name,
+    sequence_no: num(fd, "sequence_no") ?? 1,
+  });
   done(error, "phase");
 }
 

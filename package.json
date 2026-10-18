@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write app components lib proxy.ts"
+    "format": "prettier --write app components lib proxy.ts",
+    "test": "vitest run",
+    "test:db": "node scripts/db-test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
@@ -27,11 +29,14 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.0.0",
+    "pg": "^8.23.1",
     "prettier": "3.3.3",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.7"
   }
 }

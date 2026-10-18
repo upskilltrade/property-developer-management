@@ -77,7 +77,8 @@ const en: Dictionary = {
     reportExists: "A daily report for this date already exists",
     voLocked: "This variation is locked",
     duplicateBankAccount: "This account number is already on the project",
-    invalidBankAccount: "Invalid account: bank, account name and a 10–15 digit number are required (PromptPay 10 or 13 digits)",
+    invalidBankAccount:
+      "Invalid account: bank, account name and a 10–15 digit number are required (PromptPay 10 or 13 digits)",
     voState: "Not allowed in the variation's current status",
     selfApproveVo: "The author cannot approve their own variation",
     paymentCondition: "The payment condition is not met yet, so it cannot be released",
@@ -208,7 +209,8 @@ const en: Dictionary = {
   },
   importData: {
     title: "Import existing data (CSV)",
-    subtitle: "Move the project's existing records into the platform: units, customers and sales, payment schedules and payments already received. Every row is checked first, then the whole file is saved at once.",
+    subtitle:
+      "Move the project's existing records into the platform: units, customers and sales, payment schedules and payments already received. Every row is checked first, then the whole file is saved at once.",
     badge: "Imported",
     open: "Import existing data",
     ownerOnly: "Only the company owner can import data",
@@ -224,14 +226,22 @@ const en: Dictionary = {
     wizard: {
       kinds: {
         UNITS: { title: "Units", body: "Unit code, list price, phase/plot/house type" },
-        SALES: { title: "Customers & sales", body: "Buyer, sale status, agreed price, booking/contract/transfer dates" },
+        SALES: {
+          title: "Customers & sales",
+          body: "Buyer, sale status, agreed price, booking/contract/transfer dates",
+        },
         SCHEDULES: { title: "Payment schedules", body: "Installments for each unit" },
-        PAYMENTS: { title: "Payments received", body: "Payments made before the platform, with original receipt numbers" },
+        PAYMENTS: {
+          title: "Payments received",
+          body: "Payments made before the platform, with original receipt numbers",
+        },
       },
-      order: "Import in order 1 → 4, since each dataset refers to the one before (e.g. a schedule needs a unit with a customer).",
+      order:
+        "Import in order 1 → 4, since each dataset refers to the one before (e.g. a schedule needs a unit with a customer).",
       columns: "Columns in the file",
       column: "Column",
-      required: "required · use the template's English column names · save from Excel as \"CSV UTF-8\"",
+      required:
+        'required · use the template\'s English column names · save from Excel as "CSV UTF-8"',
       format: "Format",
       columnLabels: {
         unit_code: "Unit code",
@@ -331,7 +341,8 @@ const en: Dictionary = {
   },
   bank: {
     title: "Project bank accounts",
-    subtitle: "A project can have several accounts, e.g. customer receipts, construction spending, loan. Accounts marked for customers appear on the customer's payment page.",
+    subtitle:
+      "A project can have several accounts, e.g. customer receipts, construction spending, loan. Accounts marked for customers appear on the customer's payment page.",
     add: "Add bank account",
     edit: "Edit account",
     empty: "No project bank accounts yet",
@@ -367,7 +378,7 @@ const en: Dictionary = {
     actions: { makeDefault: "Make main account", close: "Close account", reopen: "Reopen" },
     customer: {
       title: "Pay by bank transfer",
-      hint: "After transferring, press \"Report payment / attach slip\" on the installment.",
+      hint: 'After transferring, press "Report payment / attach slip" on the installment.',
       copy: "Copy",
       promptpay: "PromptPay",
       recommended: "Preferred",
@@ -711,7 +722,8 @@ const en: Dictionary = {
     reference: "Reference",
     amount: "Amount",
     verifiedAt: "Verified by Finance on",
-    imported: "Imported from the previous system; receipt number from the original document · recorded on",
+    imported:
+      "Imported from the previous system; receipt number from the original document · recorded on",
     reversed: "This receipt has been reversed",
     print: "Print",
     notFound: "Receipt not found, or you are not allowed to open it",

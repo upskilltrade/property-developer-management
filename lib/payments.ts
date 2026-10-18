@@ -77,7 +77,9 @@ export function defaultSchedule({
       amount: contractAmount,
       due_date: addMonths(start, 1),
     });
-  const down = round((price * downPct) / 100);
+  // Never schedule more than the price, e.g. when the booking deposit already covers it.
+  const remaining = round(price - items.reduce((a, x) => a + x.amount, 0));
+  const down = Math.min(round((price * downPct) / 100), remaining);
   if (installments > 0 && down > 0) {
     const each = round(down / installments);
     for (let i = 1; i <= installments; i++)
