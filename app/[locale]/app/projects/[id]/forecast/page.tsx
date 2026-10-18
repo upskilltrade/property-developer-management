@@ -26,11 +26,12 @@ import { Kpi, KpiStrip } from "@/components/ui/kpi";
 import { Table, TD, TFoot, TH, THead, TR } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Sheet, SheetFooter } from "@/components/ui/sheet";
-import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
+import { Sheet } from "@/components/ui/sheet";
+import { Hidden } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { cn } from "@/components/ui/cn";
 import { ForecastLineForm } from "@/components/domain/forecast-line-form";
+import { ForecastPlanForm } from "@/components/domain/forecast-plan-form";
 import { initForecast, removeForecastLine, saveForecastLine, saveForecastPlan } from "./actions";
 
 export const metadata: Metadata = { title: "Financial plan" };
@@ -90,6 +91,9 @@ export default async function ProjectForecast({
 
   const plan = data.plan;
   const result = computeForecast(plan, data.lines, data.facts);
+  const revenueGap =
+    data.facts.unpricedUnits > 0 &&
+    data.lines.some((l) => l.method === "UNITS_FROM_SYSTEM" && !l.rate);
   const self =
     plan.sales_mode === "SELF" ? result : computeForecast(plan, data.lines, data.facts, "SELF");
   const agent =
@@ -110,6 +114,7 @@ export default async function ProjectForecast({
       categoryOptions={kind === "REVENUE" ? forecastRevenueCategories : forecastCostCategories}
       costCategories={data.categories}
       totalFloorArea={data.facts.totalFloorArea}
+      unpricedUnits={data.facts.unpricedUnits}
       labels={{
         ...f.line,
         save: t.common.save,
@@ -125,7 +130,12 @@ export default async function ProjectForecast({
     if (l.method === "PER_UNIT")
       return `${formatNumber(locale, l.rate)} × ${formatNumber(locale, l.quantity)}`;
     if (l.method === "PCT_REVENUE") return `${formatNumber(locale, l.pct, 3)}% ${f.ofRevenue}`;
-    if (l.method === "UNITS_FROM_SYSTEM") return f.methods.UNITS_FROM_SYSTEM;
+    if (l.method === "UNITS_FROM_SYSTEM")
+      return data.facts.unpricedUnits && l.rate
+        ? `${f.methods.UNITS_FROM_SYSTEM} ${f.unpricedRate
+            .replace("{rate}", formatNumber(locale, l.rate))
+            .replace("{n}", String(data.facts.unpricedUnits))}`
+        : f.methods.UNITS_FROM_SYSTEM;
     return f.methods.LUMP;
   };
   const lineRow = (l: ComputedLine) => (
@@ -233,6 +243,11 @@ export default async function ProjectForecast({
         {canPlan ? <PlanSheet plan={plan} hidden={hidden} t={t} /> : <Badge>{f.readOnly}</Badge>}
       </div>
 
+      {revenueGap ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+          {f.unpriced.replace("{n}", String(data.facts.unpricedUnits))}
+        </p>
+      ) : null}
       <KpiStrip cols={5}>
         <Kpi
           label={f.kpi.revenue}
@@ -486,7 +501,6 @@ function PlanSheet({
   t: Awaited<ReturnType<typeof resolveLocale>>["t"];
 }) {
   const f = t.forecast;
-  const v = (x: number | null) => (x == null ? "" : String(x));
   return (
     <Sheet
       title={f.plan.title}
@@ -494,86 +508,17 @@ function PlanSheet({
       triggerIcon={<Settings2 />}
       triggerVariant="secondary"
     >
-      <form action={saveForecastPlan} className="space-y-3">
-        <Hidden values={hidden} />
-        <FormGrid>
-          <Field label={f.plan.start}>
-            <Input name="start_month" type="month" defaultValue={plan.start_month.slice(0, 7)} />
-          </Field>
-          <Field label={f.plan.sellOut} hint={f.plan.sellOutHint}>
-            <Input
-              name="sell_out_months"
-              type="number"
-              min="1"
-              max="240"
-              defaultValue={plan.sell_out_months}
-            />
-          </Field>
-        </FormGrid>
-        <FormGrid>
-          <Field label={f.plan.mode}>
-            <Select name="sales_mode" defaultValue={plan.sales_mode}>
-              <option value="SELF">{f.scenarios.self}</option>
-              <option value="AGENT">{f.plan.agent}</option>
-            </Select>
-          </Field>
-          <Field label={f.plan.commission}>
-            <Input
-              name="agent_commission_pct"
-              inputMode="decimal"
-              defaultValue={v(plan.agent_commission_pct)}
-            />
-          </Field>
-        </FormGrid>
-        <Field label={f.plan.targetMargin} hint={f.plan.targetMarginHint}>
-          <Input
-            name="target_margin_pct"
-            inputMode="decimal"
-            defaultValue={v(plan.target_margin_pct)}
-          />
-        </Field>
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-2xs text-amber-900">
-          {f.plan.taxWarning}
-        </p>
-        <FormGrid>
-          <Field label={f.plan.transferFee}>
-            <Input
-              name="transfer_fee_pct"
-              inputMode="decimal"
-              defaultValue={v(plan.transfer_fee_pct)}
-            />
-          </Field>
-          <Field label={f.plan.transferShare}>
-            <Input
-              name="developer_transfer_share_pct"
-              inputMode="decimal"
-              defaultValue={v(plan.developer_transfer_share_pct)}
-            />
-          </Field>
-        </FormGrid>
-        <FormGrid>
-          <Field label={f.plan.businessTax}>
-            <Input
-              name="business_tax_pct"
-              inputMode="decimal"
-              defaultValue={v(plan.business_tax_pct)}
-            />
-          </Field>
-          <Field label={f.plan.incomeTax}>
-            <Input
-              name="income_tax_pct"
-              inputMode="decimal"
-              defaultValue={v(plan.income_tax_pct)}
-            />
-          </Field>
-        </FormGrid>
-        <Field label={f.plan.notes}>
-          <Textarea name="notes" defaultValue={plan.notes ?? ""} />
-        </Field>
-        <SheetFooter>
-          <SubmitButton>{t.common.save}</SubmitButton>
-        </SheetFooter>
-      </form>
+      <ForecastPlanForm
+        action={saveForecastPlan}
+        hidden={hidden}
+        plan={plan}
+        labels={{
+          ...f.plan,
+          refs: [...f.plan.refs],
+          self: f.scenarios.self,
+          save: t.common.save,
+        }}
+      />
     </Sheet>
   );
 }

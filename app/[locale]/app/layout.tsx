@@ -115,6 +115,8 @@ export default async function AppLayout({
               selfVerify: t.flash.selfVerify,
               photosRequired: t.flash.photosRequired,
               hasSchedule: t.flash.hasSchedule,
+              number: t.flash.number,
+              pctRange: t.flash.pctRange,
               noAccount: t.flash.noAccount,
               noCustomerForSchedule: t.flash.noCustomerForSchedule,
               scheduleHasPayments: t.flash.scheduleHasPayments,
