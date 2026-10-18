@@ -13,6 +13,7 @@ const sections = [
   "handover",
   "setup",
   "finance",
+  "forecast",
 ] as const;
 
 export function ProjectTabs({
