@@ -10,7 +10,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/components/ui/cn";
 import { PortalPlaceholder } from "@/components/domain/portal-placeholder";
 import { PhotoThumb } from "@/components/domain/photo-thumb";
-import { CustomerPayments, type CustomerUnitPayments } from "@/components/domain/customer-payments";
+import {
+  CustomerPayments,
+  type CustomerBankAccount,
+  type CustomerUnitPayments,
+} from "@/components/domain/customer-payments";
 import {
   CustomerDesign,
   type CustomerDrawing,
@@ -69,10 +73,12 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
   const { locale, t } = await resolveLocale(params);
   const { supabase } = await getSession(locale);
   const c = t.portal.customer;
-  const [{ data }, { data: paymentData }] = await Promise.all([
+  const [{ data }, { data: paymentData }, { data: bankData }] = await Promise.all([
     supabase.rpc("get_customer_portal"),
     supabase.rpc("get_customer_payments"),
+    supabase.rpc("get_customer_bank_accounts"),
   ]);
+  const bankAccounts = (bankData ?? []) as CustomerBankAccount[];
   const paymentsByUnit = new Map(
     ((paymentData ?? []) as CustomerUnitPayments[]).map((x) => [x.unit_id, x]),
   );
@@ -391,6 +397,9 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
 
             <CustomerPayments
               data={paymentsByUnit.get(u.unit_id)}
+              accounts={bankAccounts.filter(
+                (a) => a.project_id === paymentsByUnit.get(u.unit_id)?.project_id,
+              )}
               locale={locale}
               t={t}
               action={submitPaymentEvidence}

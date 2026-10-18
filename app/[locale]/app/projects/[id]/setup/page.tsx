@@ -7,7 +7,16 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Sheet, SheetFooter } from "@/components/ui/sheet";
 import { Field, FormGrid, Hidden, Input, Select } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { addHouseType, addPhase, addPlot } from "../actions";
+import type { BankAccount } from "@/lib/bank";
+import { BankAccountsPanel } from "@/components/domain/bank-accounts-panel";
+import {
+  addHouseType,
+  addPhase,
+  addPlot,
+  saveBankAccount,
+  setBankAccountActive,
+  setDefaultBankAccount,
+} from "../actions";
 
 export default async function ProjectSetup({
   params,
@@ -19,8 +28,14 @@ export default async function ProjectSetup({
   const { supabase } = await getSession(locale);
   const hidden = <Hidden values={{ locale, project_id: id }} />;
 
-  const [{ data: project }, { data: phases }, { data: plots }, { data: units }] = await Promise.all(
-    [
+  const [
+    { data: project },
+    { data: phases },
+    { data: plots },
+    { data: units },
+    { data: bankAccounts },
+    { data: canManageBank },
+  ] = await Promise.all([
       supabase.from("projects").select("organization_id").eq("id", id).single(),
       supabase
         .from("phases")
@@ -33,8 +48,16 @@ export default async function ProjectSetup({
         .eq("project_id", id)
         .order("code"),
       supabase.from("units").select("id,phase_id,plot_id,house_type_id").eq("project_id", id),
-    ],
-  );
+    supabase
+      .from("cash_accounts")
+      .select(
+        "id,code,bank_name,account_name,account_number,account_number_masked,branch,account_type,purpose,promptpay_id,show_to_customers,is_default_receipt,opening_balance,opening_date,notes,active",
+      )
+      .eq("project_id", id)
+      .order("is_default_receipt", { ascending: false })
+      .order("code"),
+    supabase.rpc("can_manage_payment_schedule", { target_project: id }),
+  ]);
   const { data: houseTypes } = project
     ? await supabase
         .from("house_types")
@@ -181,6 +204,19 @@ export default async function ProjectSetup({
           )}
         </Panel>
       </div>
+
+      <BankAccountsPanel
+        accounts={(bankAccounts ?? []) as BankAccount[]}
+        locale={locale}
+        projectId={id}
+        canManage={canManageBank === true}
+        t={t}
+        actions={{
+          save: saveBankAccount,
+          setDefault: setDefaultBankAccount,
+          setActive: setBankAccountActive,
+        }}
+      />
 
       <Panel
         title={t.project.houseTypes}

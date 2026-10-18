@@ -93,3 +93,53 @@ export async function addUnit(fd: FormData) {
   });
   done(error, "unit");
 }
+
+const bankError = (message: string) =>
+  message.includes("Duplicate")
+    ? "duplicateBankAccount"
+    : message.includes("Not authorized")
+      ? "permission"
+      : "invalidBankAccount";
+
+export async function saveBankAccount(fd: FormData) {
+  const { projectId, supabase, back, done } = await context(fd, "/setup");
+  const { error } = await supabase.rpc("save_project_bank_account", {
+    target_project: projectId,
+    data: {
+      id: optStr(fd, "account_id"),
+      bank_name: str(fd, "bank_name"),
+      account_name: str(fd, "account_name"),
+      account_number: str(fd, "account_number"),
+      branch: optStr(fd, "branch"),
+      account_type: str(fd, "account_type"),
+      purpose: str(fd, "purpose"),
+      promptpay_id: optStr(fd, "promptpay_id"),
+      show_to_customers: fd.get("show_to_customers") === "on",
+      is_default_receipt: fd.get("is_default_receipt") === "on",
+      opening_balance: num(fd, "opening_balance"),
+      opening_date: optStr(fd, "opening_date"),
+      notes: optStr(fd, "notes"),
+    },
+  });
+  if (error) redirect(withFlash(back, "error", bankError(error.message)));
+  done(null, "bank_account");
+}
+
+export async function setDefaultBankAccount(fd: FormData) {
+  const { supabase, back, done } = await context(fd, "/setup");
+  const { error } = await supabase.rpc("set_project_default_bank_account", {
+    account: str(fd, "account_id"),
+  });
+  if (error) redirect(withFlash(back, "error", bankError(error.message)));
+  done(null, "bank_account");
+}
+
+export async function setBankAccountActive(fd: FormData) {
+  const { supabase, back, done } = await context(fd, "/setup");
+  const { error } = await supabase.rpc("set_project_bank_account_active", {
+    account: str(fd, "account_id"),
+    is_active: str(fd, "active") === "true",
+  });
+  if (error) redirect(withFlash(back, "error", bankError(error.message)));
+  done(null, "bank_account");
+}

@@ -142,6 +142,8 @@ export default async function AppLayout({
               wrongState: t.flash.wrongState,
               reportExists: t.flash.reportExists,
               voLocked: t.flash.voLocked,
+              duplicateBankAccount: t.flash.duplicateBankAccount,
+              invalidBankAccount: t.flash.invalidBankAccount,
               voState: t.flash.voState,
               selfApproveVo: t.flash.selfApproveVo,
               paymentCondition: t.flash.paymentCondition,
