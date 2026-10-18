@@ -1494,6 +1494,33 @@ const en: Dictionary = {
     },
     truncated: "(answer was cut off)",
   },
+  customerAssistant: {
+    open: "Ask the assistant",
+    title: "Questions about your home",
+    banner: "Questions about your home, payments or warranty? Ask the AI assistant any time.",
+    placeholder: "Type a question, e.g. how much is my next installment?",
+    send: "Ask",
+    clear: "Start a new conversation",
+    working: "Looking at your home's records…",
+    disclaimer:
+      "The AI assistant answers only from your home's records in the system and can't change anything or take payments. Please confirm important matters with the project team.",
+    examples: [
+      "How far along is my house?",
+      "How much is my next installment, and when?",
+      "Which accounts can I pay into?",
+      "When does my warranty end?",
+    ],
+    tools: { customer: "Reading your home's records" },
+    errors: {
+      not_configured: "The AI assistant isn't available yet. Please contact the project team.",
+      refusal: "The assistant can't answer this. Try asking another way.",
+      rate_limit: "The assistant is busy. Please try again shortly.",
+      daily_limit:
+        "You've reached today's question limit. Try again tomorrow or contact the project team.",
+      generic: "Something went wrong. Please try again.",
+    },
+    truncated: "(The answer was too long and was cut off.)",
+  },
   aiReview: {
     title: "AI photo check",
     run: "Ask AI to check",
