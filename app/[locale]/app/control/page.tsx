@@ -11,6 +11,9 @@ import { Kpi, KpiStrip } from "@/components/ui/kpi";
 import { Panel } from "@/components/ui/panel";
 import { Tabs } from "@/components/ui/tabs";
 import { ProjectFilter } from "@/components/domain/project-filter";
+import { RiskReviewPanel, type RiskReviewRow } from "@/components/domain/risk-review";
+import { aiConfigured } from "@/lib/ai";
+import { runRiskReview } from "./actions";
 import {
   ApprovalsList,
   BudgetPanel,
@@ -24,8 +27,10 @@ import {
 } from "@/components/domain/control-panels";
 
 export const metadata: Metadata = { title: "Control center" };
+// The AI risk review runs as a server action from this page.
+export const maxDuration = 300;
 
-const views = ["overview", "houses", "approvals", "issues", "timeline"] as const;
+const views = ["overview", "houses", "approvals", "issues", "risks", "timeline"] as const;
 type View = (typeof views)[number];
 const PAGE = 50;
 
@@ -34,7 +39,13 @@ export default async function ControlCenter({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ view?: string; project?: string; type?: string; limit?: string }>;
+  searchParams: Promise<{
+    view?: string;
+    project?: string;
+    type?: string;
+    limit?: string;
+    review?: string;
+  }>;
 }) {
   const { locale, t } = await resolveLocale(params);
   const q = await searchParams;
@@ -176,6 +187,30 @@ export default async function ControlCenter({
         projectCode={projectCode}
         unitCode={unitCode}
         exportHref={await exportable("issues")}
+      />
+    );
+  } else if (view === "risks") {
+    let reviewQuery = supabase
+      .from("risk_reviews")
+      .select(
+        "id,summary_th,summary_en,risks,discarded,record_count,created_at,creator:profiles!risk_reviews_created_by_fkey(display_name)",
+      )
+      .order("created_at", { ascending: false })
+      .limit(12);
+    reviewQuery = project
+      ? reviewQuery.eq("project_id", project)
+      : reviewQuery.is("project_id", null);
+    const { data: reviews } = await reviewQuery;
+    body = (
+      <RiskReviewPanel
+        reviews={(reviews ?? []) as unknown as RiskReviewRow[]}
+        selectedId={q.review}
+        locale={locale}
+        project={project}
+        hrefFor={(id) => href("risks", { review: id })}
+        action={runRiskReview}
+        configured={aiConfigured()}
+        t={t}
       />
     );
   } else {
