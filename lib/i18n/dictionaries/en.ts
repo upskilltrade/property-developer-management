@@ -381,6 +381,16 @@ const en: Dictionary = {
       hint: 'After transferring, press "Report payment / attach slip" on the installment.',
       copy: "Copy",
       promptpay: "PromptPay",
+      qrButton: "Pay with PromptPay QR",
+      qrTitle: "Pay with PromptPay",
+      receiver: "Receiver name",
+      qrStep1:
+        "Open your banking app, choose Scan QR and scan this code (or save a screenshot and pick it from your photos). The amount fills in automatically.",
+      qrStep2: 'Before confirming, check the receiver name in the app matches "{name}".',
+      qrStep3:
+        'After paying, press "Report payment / attach slip"; Finance will check it and issue the receipt.',
+      qrStandard:
+        "PromptPay QR following the Thai QR Payment (EMVCo) standard · transfers are not reported to the system automatically",
       recommended: "Preferred",
     },
   },
