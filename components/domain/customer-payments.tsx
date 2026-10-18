@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Sheet } from "@/components/ui/sheet";
 import { CopyButton } from "@/components/ui/copy-button";
 import { EvidenceUploadForm } from "@/components/domain/evidence-upload-form";
+import { OnlinePay } from "@/components/domain/online-pay";
 import { formatAccountNumber } from "@/lib/bank";
 import { promptPaySvg } from "@/lib/promptpay";
 
@@ -145,14 +146,17 @@ async function PromptPayQr({
 export function CustomerPayments({
   data,
   accounts = [],
+  onlinePay = false,
   locale,
   t,
   action,
 }: {
   data: CustomerUnitPayments | undefined;
   accounts?: CustomerBankAccount[];
+  /** Omise is configured: pay by QR with automatic confirmation. */
+  onlinePay?: boolean;
   locale: Locale;
-  t: Pick<Dictionary, "portal" | "payments" | "status" | "schedule" | "bank">;
+  t: Pick<Dictionary, "portal" | "payments" | "status" | "schedule" | "bank" | "onlinePay">;
   action: (fd: FormData) => Promise<void>;
 }) {
   const c = t.portal.customer;
@@ -228,7 +232,24 @@ export function CustomerPayments({
                       {r.receipt_no} · {money(r.amount)}
                     </Link>
                   ))}
-                  {canReport && qrAccount ? (
+                  {canReport && onlinePay ? (
+                    <Sheet
+                      title={`${t.onlinePay.title} · ${locale === "th" ? s.label_th : s.label_en}`}
+                      triggerLabel={t.onlinePay.button}
+                      triggerIcon={<QrCode />}
+                      triggerSize="xs"
+                      triggerVariant="primary"
+                    >
+                      <OnlinePay
+                        locale={locale}
+                        scheduleId={s.id}
+                        amount={toNumber(s.outstanding)}
+                        amountLabel={money(s.outstanding)}
+                        labels={t.onlinePay.sheet}
+                      />
+                    </Sheet>
+                  ) : null}
+                  {canReport && !onlinePay && qrAccount ? (
                     <Sheet
                       title={`${t.bank.customer.qrTitle} · ${locale === "th" ? s.label_th : s.label_en}`}
                       triggerLabel={t.bank.customer.qrButton}

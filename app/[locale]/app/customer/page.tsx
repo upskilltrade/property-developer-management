@@ -7,6 +7,7 @@ import { scheduleStages } from "@/lib/schedule";
 import { Panel } from "@/components/ui/panel";
 import { Sheet } from "@/components/ui/sheet";
 import { AssistantChat } from "@/components/domain/assistant-chat";
+import { omiseConfigured } from "@/lib/omise";
 import { Progress } from "@/components/ui/progress";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/components/ui/cn";
@@ -427,6 +428,7 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
 
             <CustomerPayments
               data={paymentsByUnit.get(u.unit_id)}
+              onlinePay={omiseConfigured()}
               accounts={bankAccounts.filter(
                 (a) => a.project_id === paymentsByUnit.get(u.unit_id)?.project_id,
               )}
