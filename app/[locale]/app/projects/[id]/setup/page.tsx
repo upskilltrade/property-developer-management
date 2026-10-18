@@ -1,3 +1,4 @@
+import { FileUp } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { formatNumber } from "@/lib/format";
@@ -7,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Sheet, SheetFooter } from "@/components/ui/sheet";
 import { Field, FormGrid, Hidden, Input, Select } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { ButtonLink } from "@/components/ui/button";
 import type { BankAccount } from "@/lib/bank";
 import { BankAccountsPanel } from "@/components/domain/bank-accounts-panel";
 import {
@@ -36,18 +38,18 @@ export default async function ProjectSetup({
     { data: bankAccounts },
     { data: canManageBank },
   ] = await Promise.all([
-      supabase.from("projects").select("organization_id").eq("id", id).single(),
-      supabase
-        .from("phases")
-        .select("id,code,name,sequence_no")
-        .eq("project_id", id)
-        .order("sequence_no"),
-      supabase
-        .from("plots")
-        .select("id,code,land_area_sqm,phase_id")
-        .eq("project_id", id)
-        .order("code"),
-      supabase.from("units").select("id,phase_id,plot_id,house_type_id").eq("project_id", id),
+    supabase.from("projects").select("organization_id").eq("id", id).single(),
+    supabase
+      .from("phases")
+      .select("id,code,name,sequence_no")
+      .eq("project_id", id)
+      .order("sequence_no"),
+    supabase
+      .from("plots")
+      .select("id,code,land_area_sqm,phase_id")
+      .eq("project_id", id)
+      .order("code"),
+    supabase.from("units").select("id,phase_id,plot_id,house_type_id").eq("project_id", id),
     supabase
       .from("cash_accounts")
       .select(
@@ -73,7 +75,13 @@ export default async function ProjectSetup({
 
   return (
     <div className="space-y-4">
-      <p className="text-[13px] text-muted">{t.project.setupSubtitle}</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[13px] text-muted">{t.project.setupSubtitle}</p>
+        <ButtonLink href={`/${locale}/app/projects/${id}/setup/import`} size="sm">
+          <FileUp />
+          {t.importData.open}
+        </ButtonLink>
+      </div>
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel
           title={t.project.phases}

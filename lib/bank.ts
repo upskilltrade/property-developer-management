@@ -1,4 +1,10 @@
-export const bankPurposes = ["GENERAL", "CUSTOMER_RECEIPTS", "CONSTRUCTION", "ESCROW", "LOAN"] as const;
+export const bankPurposes = [
+  "GENERAL",
+  "CUSTOMER_RECEIPTS",
+  "CONSTRUCTION",
+  "ESCROW",
+  "LOAN",
+] as const;
 export const bankAccountTypes = ["SAVINGS", "CURRENT", "FIXED"] as const;
 
 /** Suggestions for the bank name field; any other name can be typed. */
@@ -42,5 +48,7 @@ export type BankAccount = {
 /** Groups a 10-digit account number the way Thai banks print it (xxx-x-xxxxx-x). */
 export function formatAccountNumber(n: string | null | undefined) {
   if (!n) return "";
-  return /^\d{10}$/.test(n) ? `${n.slice(0, 3)}-${n.slice(3, 4)}-${n.slice(4, 9)}-${n.slice(9)}` : n;
+  return /^\d{10}$/.test(n)
+    ? `${n.slice(0, 3)}-${n.slice(3, 4)}-${n.slice(4, 9)}-${n.slice(9)}`
+    : n;
 }

@@ -177,8 +177,7 @@ export function BankAccountsPanel({
           </p>
           <p className="text-2xs text-faint">
             {a.code} · {b.fields.openingBalance} {formatMoney(locale, a.opening_balance)} (
-            {formatDate(locale, a.opening_date)})
-            {a.notes ? ` · ${a.notes}` : ""}
+            {formatDate(locale, a.opening_date)}){a.notes ? ` · ${a.notes}` : ""}
           </p>
         </div>
       </div>
