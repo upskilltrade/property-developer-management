@@ -22,6 +22,8 @@ type Labels = {
   none: string;
   selfOnly: string;
   areaHint: string;
+  unitsRate: string;
+  unitsRateHint: string;
   save: string;
   methods: Record<string, string>;
   timings: Record<string, string>;
@@ -37,6 +39,7 @@ export function ForecastLineForm({
   categoryOptions,
   costCategories,
   totalFloorArea,
+  unpricedUnits,
   labels,
 }: {
   action: (fd: FormData) => Promise<void>;
@@ -46,6 +49,7 @@ export function ForecastLineForm({
   categoryOptions: readonly string[];
   costCategories: { id: string; code: string; name: string }[];
   totalFloorArea: number;
+  unpricedUnits: number;
   labels: Labels;
 }) {
   const methods =
@@ -88,6 +92,14 @@ export function ForecastLineForm({
           defaultValue={line?.label ?? labels.categories[category] ?? ""}
         />
       </Field>
+      {method === "UNITS_FROM_SYSTEM" ? (
+        <Field
+          label={labels.unitsRate}
+          hint={labels.unitsRateHint.replace("{n}", unpricedUnits.toLocaleString())}
+        >
+          <Input name="rate" inputMode="decimal" defaultValue={line?.rate || ""} />
+        </Field>
+      ) : null}
       {method === "LUMP" ? (
         <Field label={labels.amount}>
           <Input name="amount" inputMode="decimal" defaultValue={line?.amount || ""} />

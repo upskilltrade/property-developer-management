@@ -67,6 +67,8 @@ export type ForecastFacts = {
   soldUnits: number;
   /** List prices of units not yet sold. */
   unsoldListValue: number;
+  /** Unsold units with no list price yet; the revenue line's rate stands in for them. */
+  unpricedUnits: number;
   collected: number;
   totalFloorArea: number;
   /** Spending recorded against each cost category (posted payments / commitments). */
@@ -119,7 +121,7 @@ export function computeForecast(
   const value = (l: ForecastLine, revenue: number) => {
     switch (l.method) {
       case "UNITS_FROM_SYSTEM":
-        return facts.soldValue + facts.unsoldListValue;
+        return facts.soldValue + facts.unsoldListValue + n(l.rate) * facts.unpricedUnits;
       case "PER_SQM":
       case "PER_UNIT":
         return n(l.rate) * n(l.quantity);

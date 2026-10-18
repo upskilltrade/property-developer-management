@@ -42,6 +42,7 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
   let soldValue = 0;
   let soldUnits = 0;
   let unsoldListValue = 0;
+  let unpricedUnits = 0;
   let totalFloorArea = 0;
   for (const u of units ?? []) {
     const sale = one(u.unit_sales as One<{ status: string | null; agreed_price: number | null }>);
@@ -49,7 +50,8 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     if (sold) {
       soldUnits++;
       soldValue += toNumber(sale?.agreed_price ?? u.list_price);
-    } else unsoldListValue += toNumber(u.list_price);
+    } else if (toNumber(u.list_price) > 0) unsoldListValue += toNumber(u.list_price);
+    else unpricedUnits++;
     totalFloorArea += toNumber(
       one(u.house_types as One<{ gross_floor_area_sqm: number | null }>)?.gross_floor_area_sqm,
     );
@@ -66,6 +68,7 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     soldValue,
     soldUnits,
     unsoldListValue,
+    unpricedUnits,
     collected: (payments ?? []).reduce((a, p) => a + toNumber(p.amount), 0),
     totalFloorArea,
     actualByCategory,

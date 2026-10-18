@@ -47,6 +47,8 @@ const en: Dictionary = {
     permission: "This account is not permitted to perform this action",
     selfVerify: "You reported this progress, so another authorized person must verify it",
     photosRequired: "Attach the required number of photos before submitting the report",
+    number: "Number fields accept numbers only, e.g. 15 or 1,500,000",
+    pctRange: "Percentages must be between 0 and 100",
     hasSchedule: "This unit already has a schedule",
     noAccount: "No account uses that email; ask the customer to sign up first",
     noCustomerForSchedule: "Add the customer to the sale before creating a payment schedule",
@@ -1681,8 +1683,11 @@ const en: Dictionary = {
       "Paid / committed come from the linked cost category (payment documents and commitments recorded in the system)",
     totalCosts: "Total costs",
     taxNote:
-      "Every tax and fee rate is entered by the owner; the system never fills them in. Check with your accountant / Land Department before deciding. Transfer fees are computed on sales value (appraised value may differ).",
+      "Tax and fee rates come from Plan settings (which offer reference rates). Have your accountant confirm them before deciding. Transfer fee and business tax use the sale price; higher appraised values mean higher amounts.",
     rateMissing: "rate not set",
+    unpriced:
+      '{n} houses have no list price yet, so revenue is incomplete. Click "Edit" on the house sales line and enter an expected price per house, or set list prices on the unit pages.',
+    unpricedRate: "+ {rate} × {n} houses without a price",
     kpi: {
       revenue: "Forecast revenue",
       costs: "Total costs",
@@ -1777,6 +1782,8 @@ const en: Dictionary = {
       costCategoryHint: "A cost category can be linked to one line only",
       none: "— not linked —",
       selfOnly: "Only when selling in-house (not counted with a sole agent)",
+      unitsRate: "Expected price per house (for houses with no price yet)",
+      unitsRateHint: "{n} houses have no list price yet; priced houses use their system price",
       areaHint: "Floor area of all units in the system: {n} sq.m.",
     },
     plan: {
@@ -1790,8 +1797,18 @@ const en: Dictionary = {
       commission: "Sole agent commission (%)",
       targetMargin: "Target net margin (% of revenue)",
       targetMarginHint: "Used to work out the giveaway / spec budget left per house",
+      commissionHint: "No legal standard rate; it depends on the agent contract",
       taxWarning:
-        "Enter rates as confirmed by your accountant or the Land Department; the system doesn't fill them in. Blank counts as 0.",
+        "These are general reference rates, not tax advice for your company. Have your accountant confirm them before deciding. Blank fields count as 0.",
+      useRefs: "Use reference rates",
+      refsTitle: "Reference rates (2026)",
+      refs: [
+        "Transfer fee 2% of the appraised value or sale price, whichever is higher (Department of Lands). A reduced 0.01% applies until 30 Jun 2027 only to Thai individual buyers where both sale price and appraised value are at most THB 7M (Cabinet resolution 30 Jun 2026). Use 0.01 only if every house qualifies and transfers in time.",
+        "Developer's share: as agreed in the contract; splitting it 50/50 is common.",
+        "Specific business tax 3.3% (3% + 10% local tax on it) of the sale price or appraised value, whichever is higher. A company selling houses as a business pays it, and then does not also pay 0.5% stamp duty.",
+        "Corporate income tax 20% of net profit. SMEs (paid-up capital up to THB 5M, revenue up to THB 30M) pay 0% on the first THB 300,000 and 15% up to THB 3M; the plan uses a flat 20% to stay conservative.",
+        "Transfer fee and business tax are calculated on the sale price; if appraised values are higher, the real amounts will be higher.",
+      ],
       transferFee: "Transfer fee (%)",
       transferShare: "Developer's share (% of transfer fee)",
       businessTax: "Specific business tax (%)",
