@@ -137,7 +137,7 @@ export default async function UnitSchedule({
     supabase
       .from("ai_photo_reviews")
       .select(
-        "progress_update_id,verdict,estimated_percent,summary_th,summary_en,concerns,photo_count,created_at",
+        "progress_update_id,verdict,estimated_percent,summary_th,summary_en,concerns,photo_count,created_at,spec_verdict,technical_verdict,findings,documents",
       )
       .eq("project_id", id)
       .order("created_at", { ascending: false })

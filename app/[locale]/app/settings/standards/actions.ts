@@ -17,7 +17,24 @@ const fields = (fd: FormData) => ({
   source_url: str(fd, "source_url"),
   notes: str(fd, "notes"),
   file_path: str(fd, "file_path"),
+  doc_type: str(fd, "doc_type") || "STANDARD",
+  project_id: str(fd, "project_id"),
+  stages: stagesOf(fd),
 });
+
+/** Stage checkboxes, or the JSON list carried by the attach-file form. */
+function stagesOf(fd: FormData) {
+  const ticked = fd.getAll("stages").map(String);
+  if (ticked.length === 1 && ticked[0].startsWith("[")) {
+    try {
+      const list = JSON.parse(ticked[0]);
+      return Array.isArray(list) ? list.map(String) : [];
+    } catch {
+      return [];
+    }
+  }
+  return ticked.filter(Boolean);
+}
 
 export async function saveStandard(fd: FormData) {
   const { supabase, finish } = await context(fd);

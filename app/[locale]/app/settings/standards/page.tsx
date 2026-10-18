@@ -6,6 +6,7 @@ import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
 import { formatDateTime } from "@/lib/format";
 import { standardIssuers, standardTone } from "@/lib/standards";
+import { scheduleStages } from "@/lib/schedule";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,9 @@ type Standard = {
   status: string;
   verified_at: string | null;
   notes: string | null;
+  doc_type: string;
+  project_id: string | null;
+  stages: string[];
 };
 
 export default async function StandardsPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -40,14 +44,18 @@ export default async function StandardsPage({ params }: { params: Promise<{ loca
     ?.organization_id as string;
   const back = `/${locale}/app/settings/standards`;
 
-  const [{ data: rows }, { data: canManage }] = await Promise.all([
+  const [{ data: rows }, { data: canManage }, { data: projects }] = await Promise.all([
     supabase
       .from("inspection_standards")
-      .select("id,code,title,issuer,edition,source_url,file_path,status,verified_at,notes")
+      .select(
+        "id,code,title,issuer,edition,source_url,file_path,status,verified_at,notes,doc_type,project_id,stages",
+      )
       .order("status")
       .order("code"),
     supabase.rpc("can_manage_standards", { target_org: org }),
+    supabase.from("projects").select("id,code").order("code"),
   ]);
+  const projectCode = new Map((projects ?? []).map((p) => [p.id, p.code]));
   const standards = (rows ?? []) as Standard[];
   const paths = standards.map((x) => x.file_path).filter(Boolean) as string[];
   const { data: signed } = paths.length
@@ -77,6 +85,45 @@ export default async function StandardsPage({ params }: { params: Promise<{ loca
       <Field label={s.titleField} required>
         <Input name="title" required defaultValue={x?.title} />
       </Field>
+      <FormGrid>
+        <Field label={s.docType} required>
+          <Select name="doc_type" defaultValue={x?.doc_type ?? "STANDARD"}>
+            {(["STANDARD", "PROJECT_SPEC", "CONTRACT"] as const).map((d) => (
+              <option key={d} value={d}>
+                {s.docTypes[d]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={s.project} hint={s.projectRequired}>
+          <Select name="project_id" defaultValue={x?.project_id ?? ""}>
+            <option value="">{s.allProjects}</option>
+            {(projects ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.code}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </FormGrid>
+      <fieldset>
+        <legend className="mb-1 text-2xs font-medium text-ink-2">
+          {s.stages} <span className="font-normal text-muted">· {s.allStages}</span>
+        </legend>
+        <div className="flex flex-wrap gap-3 text-[13px]">
+          {scheduleStages.map((st) => (
+            <label key={st} className="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                name="stages"
+                value={st}
+                defaultChecked={x?.stages?.includes(st)}
+              />
+              {t.status.stage[st as keyof typeof t.status.stage] ?? st}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <FormGrid>
         <Field label={s.edition}>
           <Input name="edition" defaultValue={x?.edition ?? ""} />
@@ -127,7 +174,11 @@ export default async function StandardsPage({ params }: { params: Promise<{ loca
                     </Badge>
                   </div>
                   <p className="text-2xs text-muted">
-                    {label(s.issuers, x.issuer)}
+                    {label(s.docTypes, x.doc_type)} · {label(s.issuers, x.issuer)}
+                    {x.project_id ? ` · ${projectCode.get(x.project_id) ?? ""}` : ""}
+                    {x.stages?.length
+                      ? ` · ${x.stages.map((st) => t.status.stage[st as keyof typeof t.status.stage] ?? st).join(", ")}`
+                      : ""}
                     {x.edition ? ` · ${s.edition} ${x.edition}` : ""}
                     {x.verified_at && x.status === "VERIFIED"
                       ? ` · ${s.verifiedBy} ${formatDateTime(locale, x.verified_at)}`
@@ -179,6 +230,9 @@ export default async function StandardsPage({ params }: { params: Promise<{ loca
                               edition: x.edition ?? "",
                               source_url: x.source_url ?? "",
                               notes: x.notes ?? "",
+                              doc_type: x.doc_type,
+                              project_id: x.project_id ?? "",
+                              stages: JSON.stringify(x.stages ?? []),
                             }}
                             bucket="standard-docs"
                             folder={`${org}/${x.id}`}

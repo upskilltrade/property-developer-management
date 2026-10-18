@@ -12,6 +12,7 @@ import {
   imageTypes,
   reviewProgressPhotos,
   type AiImage,
+  type ReviewDocument,
 } from "@/lib/ai";
 
 /** Maps RPC exceptions to flash keys the toast can explain. */
@@ -132,6 +133,8 @@ export async function voidPhoto(fd: FormData) {
 
 const MAX_REVIEW_PHOTOS = 6;
 const MAX_PHOTO_BYTES = 4_500_000;
+const MAX_REVIEW_DOCS = 4;
+const MAX_DOC_BYTES = 20_000_000;
 
 /**
  * Second opinion from AI on whether the photos support the reported percent. Only verifiers may
@@ -176,6 +179,42 @@ export async function reviewPhotosWithAi(fd: FormData) {
   }
   if (!images.length) fail("no_photos");
 
+  // Verified documents for this kind of work: the project's specification and contract first,
+  // then technical standards. Only documents with an attached file can be read by the model.
+  const stage = (
+    Array.isArray(update.schedule_activities)
+      ? update.schedule_activities[0]
+      : update.schedule_activities
+  )?.stage as string | undefined;
+  const projectId = str(fd, "project_id");
+  if (!/^[0-9a-f-]{36}$/i.test(projectId)) redirect(withFlash(back, "error", "invalid"));
+  const { data: docRows } = await supabase
+    .from("inspection_standards")
+    .select("id,code,title,doc_type,file_path,stages,project_id")
+    .eq("status", "VERIFIED")
+    .not("file_path", "is", null)
+    .or(`project_id.is.null,project_id.eq.${projectId}`)
+    .limit(50);
+  const rank = { PROJECT_SPEC: 0, CONTRACT: 1, STANDARD: 2 } as Record<string, number>;
+  const applicable = (docRows ?? [])
+    .filter((d) => !d.stages?.length || (stage && d.stages.includes(stage)))
+    .sort((a, b) => (rank[a.doc_type] ?? 9) - (rank[b.doc_type] ?? 9));
+  const documents: ReviewDocument[] = [];
+  let docBytes = 0;
+  for (const d of applicable) {
+    if (documents.length >= MAX_REVIEW_DOCS) break;
+    const { data: blob } = await supabase.storage.from("standard-docs").download(d.file_path!);
+    if (!blob || docBytes + blob.size > MAX_DOC_BYTES) continue;
+    docBytes += blob.size;
+    documents.push({
+      code: d.code,
+      title: d.title,
+      docType: d.doc_type,
+      media_type: "application/pdf",
+      data: Buffer.from(await blob.arrayBuffer()).toString("base64"),
+    });
+  }
+
   const activity = (
     Array.isArray(update.schedule_activities)
       ? update.schedule_activities[0]
@@ -196,6 +235,7 @@ export async function reviewPhotosWithAi(fd: FormData) {
       previousVerified: toNumber(activity?.verified_percent),
       note: update.note,
       images,
+      documents,
     });
   } catch (e) {
     console.error("photo review failed", e);
@@ -211,7 +251,12 @@ export async function reviewPhotosWithAi(fd: FormData) {
   if (!result) return fail(errorKeyAi ?? "generic");
   const { error } = await supabase.rpc("save_photo_review", {
     target_update: updateId,
-    review: { ...result.review, photo_count: images.length, model: AI_MODEL },
+    review: {
+      ...result.review,
+      photo_count: images.length,
+      model: AI_MODEL,
+      documents: documents.map((d) => ({ code: d.code, title: d.title, doc_type: d.docType })),
+    },
   });
   if (error) redirect(withFlash(back, "error", errorKey(error.message)));
   revalidatePath(back);
