@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Landmark, Receipt, Upload, Wallet } from "lucide-react";
+import { Landmark, QrCode, Receipt, Upload, Wallet } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n/dictionaries/th";
 import type { Locale } from "@/lib/i18n/config";
 import { label } from "@/lib/i18n/label";
@@ -13,6 +13,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { CopyButton } from "@/components/ui/copy-button";
 import { EvidenceUploadForm } from "@/components/domain/evidence-upload-form";
 import { formatAccountNumber } from "@/lib/bank";
+import { promptPaySvg } from "@/lib/promptpay";
 
 export type CustomerUnitPayments = {
   unit_id: string;
@@ -98,6 +99,48 @@ function TransferAccounts({
   );
 }
 
+/** A one-time PromptPay QR for an installment; banking apps pre-fill the amount. */
+async function PromptPayQr({
+  account,
+  amount,
+  money,
+  t,
+}: {
+  account: CustomerBankAccount & { promptpay_id: string };
+  amount: number;
+  money: string;
+  t: Pick<Dictionary, "bank">;
+}) {
+  const svg = await promptPaySvg(account.promptpay_id, amount);
+  if (!svg) return null;
+  const q = t.bank.customer;
+  return (
+    <div className="space-y-3 text-center text-[13px]">
+      <div
+        className="mx-auto w-full max-w-64 rounded-lg border border-line bg-white p-2 [&_svg]:h-auto [&_svg]:w-full"
+        // Generated locally from the account's PromptPay ID and the amount; no user markup.
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+      <p className="text-2xl font-semibold num">{money}</p>
+      <div className="rounded-md bg-subtle px-3 py-2 text-left text-2xs">
+        <p>
+          {q.receiver}: <span className="font-medium">{account.account_name}</span>
+        </p>
+        <p>
+          {q.promptpay}: <span className="font-mono">{account.promptpay_id}</span>
+          {account.bank_name ? ` · ${account.bank_name}` : ""}
+        </p>
+      </div>
+      <ol className="list-decimal space-y-0.5 pl-5 text-left text-2xs text-muted">
+        <li>{q.qrStep1}</li>
+        <li>{q.qrStep2.replace("{name}", account.account_name ?? "")}</li>
+        <li>{q.qrStep3}</li>
+      </ol>
+      <p className="text-[10px] text-faint">{q.qrStandard}</p>
+    </div>
+  );
+}
+
 /** Customer's installments: status from verified payments, slip upload, rejections and receipts. */
 export function CustomerPayments({
   data,
@@ -119,6 +162,10 @@ export function CustomerPayments({
   const next = items.find((s) => toNumber(s.outstanding) > 0);
   const today = todayIso();
   const money = (v: unknown) => formatMoney(locale, v);
+  // QR payments go to the main receiving account when it has PromptPay, else any account that does.
+  const qrAccount = [...accounts]
+    .sort((a, b) => Number(b.is_default) - Number(a.is_default))
+    .find((a): a is CustomerBankAccount & { promptpay_id: string } => Boolean(a.promptpay_id));
 
   return (
     <Panel
@@ -181,6 +228,22 @@ export function CustomerPayments({
                       {r.receipt_no} · {money(r.amount)}
                     </Link>
                   ))}
+                  {canReport && qrAccount ? (
+                    <Sheet
+                      title={`${t.bank.customer.qrTitle} · ${locale === "th" ? s.label_th : s.label_en}`}
+                      triggerLabel={t.bank.customer.qrButton}
+                      triggerIcon={<QrCode />}
+                      triggerSize="xs"
+                      triggerVariant="primary"
+                    >
+                      <PromptPayQr
+                        account={qrAccount}
+                        amount={toNumber(s.outstanding)}
+                        money={money(s.outstanding)}
+                        t={t}
+                      />
+                    </Sheet>
+                  ) : null}
                   {canReport ? (
                     <Sheet
                       title={c.submitEvidence}
