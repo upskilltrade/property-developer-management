@@ -23,7 +23,7 @@ type Labels = {
  * Inline markdown for assistant answers: **bold**, [text](link) and plain text. Only links into
  * this app's own pages are rendered as links; anything else stays text.
  */
-function inline(text: string, appPrefix: string, key: string): ReactNode[] {
+function inline(text: string, prefixes: string[], key: string): ReactNode[] {
   const out: ReactNode[] = [];
   const re = /\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)\s]+)\)/g;
   let last = 0;
@@ -32,7 +32,7 @@ function inline(text: string, appPrefix: string, key: string): ReactNode[] {
   while ((m = re.exec(text))) {
     if (m.index > last) out.push(text.slice(last, m.index));
     if (m[1] !== undefined) out.push(<strong key={`${key}-${i++}`}>{m[1]}</strong>);
-    else if (m[3].startsWith(appPrefix))
+    else if (prefixes.some((p) => m![3].startsWith(p)))
       out.push(
         <Link key={`${key}-${i++}`} href={m[3]} className="font-medium text-brand hover:underline">
           {m[2]}
@@ -45,7 +45,7 @@ function inline(text: string, appPrefix: string, key: string): ReactNode[] {
   return out;
 }
 
-function Markdown({ text, appPrefix }: { text: string; appPrefix: string }) {
+function Markdown({ text, prefixes }: { text: string; prefixes: string[] }) {
   const blocks: ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   const flush = () => {
@@ -57,7 +57,7 @@ function Markdown({ text, appPrefix }: { text: string; appPrefix: string }) {
         className={cn("space-y-0.5 pl-5", list.ordered ? "list-decimal" : "list-disc")}
       >
         {list.items.map((item, i) => (
-          <li key={i}>{inline(item, appPrefix, `l${blocks.length}-${i}`)}</li>
+          <li key={i}>{inline(item, prefixes, `l${blocks.length}-${i}`)}</li>
         ))}
       </Tag>,
     );
@@ -79,7 +79,7 @@ function Markdown({ text, appPrefix }: { text: string; appPrefix: string }) {
     const heading = line.match(/^#{1,4}\s+(.*)$/);
     blocks.push(
       <p key={`p${n}`} className={heading ? "font-semibold text-ink" : undefined}>
-        {inline(heading ? heading[1] : line, appPrefix, `p${n}`)}
+        {inline(heading ? heading[1] : line, prefixes, `p${n}`)}
       </p>,
     );
   });
@@ -91,17 +91,25 @@ export function AssistantChat({
   locale,
   labels,
   configured,
+  endpoint = `/${locale}/app/assistant/chat`,
+  linkPrefixes = [`/${locale}/app/`],
+  compact = false,
 }: {
   locale: string;
   labels: Labels;
   configured: boolean;
+  /** Route that answers in the NDJSON protocol below. */
+  endpoint?: string;
+  /** Only links starting with one of these render as links. */
+  linkPrefixes?: string[];
+  /** Fits a side sheet instead of a full page. */
+  compact?: boolean;
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
-  const appPrefix = `/${locale}/app/`;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -122,7 +130,7 @@ export function AssistantChat({
         { role: "assistant", content: labels.errors[key] ?? labels.errors.generic, error: true },
       ]);
     try {
-      const res = await fetch(`/${locale}/app/assistant/chat`, {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -177,17 +185,22 @@ export function AssistantChat({
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-11rem)] flex-col rounded-lg border border-line bg-surface shadow-xs">
+    <div
+      className={cn(
+        "flex flex-col rounded-lg border border-line bg-surface shadow-xs",
+        compact ? "h-[calc(100dvh-7.5rem)]" : "min-h-[calc(100dvh-11rem)]",
+      )}
+    >
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {!turns.length ? (
-          <div className="mx-auto max-w-2xl py-6 text-center">
+          <div className={cn("mx-auto max-w-2xl text-center", compact ? "py-2" : "py-6")}>
             <Sparkles className="mx-auto mb-3 size-8 text-brand" />
             {!configured ? (
               <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
                 {labels.errors.not_configured}
               </p>
             ) : null}
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className={cn("grid gap-2", !compact && "sm:grid-cols-2")}>
               {labels.examples.map((ex) => (
                 <button
                   key={ex}
@@ -218,7 +231,7 @@ export function AssistantChat({
                 )}
               >
                 {t.role === "assistant" && !t.error ? (
-                  <Markdown text={t.content} appPrefix={appPrefix} />
+                  <Markdown text={t.content} prefixes={linkPrefixes} />
                 ) : (
                   <p className="whitespace-pre-wrap">{t.content}</p>
                 )}

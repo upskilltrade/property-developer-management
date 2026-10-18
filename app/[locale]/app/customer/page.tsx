@@ -1,10 +1,12 @@
-import { CalendarCheck, FileText, Home, Images } from "lucide-react";
+import { CalendarCheck, FileText, Home, Images, Sparkles } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
 import { formatDate, toNumber } from "@/lib/format";
 import { scheduleStages } from "@/lib/schedule";
 import { Panel } from "@/components/ui/panel";
+import { Sheet } from "@/components/ui/sheet";
+import { AssistantChat } from "@/components/domain/assistant-chat";
 import { Progress } from "@/components/ui/progress";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/components/ui/cn";
@@ -295,8 +297,36 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
   const name = (x: Named) => (locale === "th" ? x.name_th : x.name_en) || x.name_en;
   const date = (v: string | null | undefined) => formatDate(locale, v);
 
+  const ca = t.customerAssistant;
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand/20 bg-brand-soft/40 px-4 py-3">
+        <p className="flex items-center gap-2 text-[13px] text-ink-2">
+          <Sparkles className="size-4 shrink-0 text-brand" />
+          {ca.banner}
+        </p>
+        <Sheet title={ca.title} triggerLabel={ca.open} triggerIcon={<Sparkles />} width="lg">
+          <AssistantChat
+            locale={locale}
+            configured={Boolean(process.env.ANTHROPIC_API_KEY)}
+            endpoint={`/${locale}/app/customer/assistant`}
+            linkPrefixes={[`/${locale}/app/customer`, `/${locale}/receipt/`]}
+            compact
+            labels={{
+              placeholder: ca.placeholder,
+              send: ca.send,
+              clear: ca.clear,
+              working: ca.working,
+              disclaimer: ca.disclaimer,
+              examples: ca.examples,
+              tools: ca.tools,
+              errors: ca.errors,
+              truncated: ca.truncated,
+            }}
+          />
+        </Sheet>
+      </div>
       {units.map((u) => {
         const stages = scheduleStages
           .map((stage) => {
