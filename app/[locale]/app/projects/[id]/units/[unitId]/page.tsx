@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarRange, Pencil, Wallet } from "lucide-react";
+import { ArrowLeft, CalendarRange, Pencil, Trash2, Wallet } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -16,7 +16,13 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { cn } from "@/components/ui/cn";
 import { Unit360Panel, type Unit360Data } from "@/components/domain/unit-360";
 import { timelineColumns, type TimelineEvent } from "@/lib/control";
-import { linkCustomerAccount, saveConstruction, saveFinancials, saveSale } from "./actions";
+import {
+  deleteUnit,
+  linkCustomerAccount,
+  saveConstruction,
+  saveFinancials,
+  saveSale,
+} from "./actions";
 
 type One<T> = T | T[] | null | undefined;
 const one = <T,>(v: One<T>): T | undefined => (Array.isArray(v) ? v[0] : (v ?? undefined));
@@ -53,6 +59,7 @@ export default async function Unit360({
     { count: warranties },
     { count: serviceOpen },
     { data: events },
+    { data: canDelete },
   ] = await Promise.all([
     supabase
       .from("schedule_activities")
@@ -95,7 +102,15 @@ export default async function Unit360({
       .eq("unit_id", unitId)
       .order("created_at", { ascending: false })
       .limit(15),
+    supabase.rpc("can_delete_unit", { target_unit: unitId }),
   ]);
+  const deleteSummary =
+    canDelete === true
+      ? ((await supabase.rpc("unit_delete_summary", { target_unit: unitId })).data as {
+          deleted: Record<string, number>;
+          unlinked: Record<string, number>;
+        } | null)
+      : null;
   // Unit cost figures are finance data; only finance / cost viewers see them.
   const showCost = canFinance === true;
   const sumOf = (rows: Record<string, unknown>[] | null, k: string) =>
@@ -617,6 +632,60 @@ export default async function Unit360({
           />
         </Panel>
       </div>
+
+      {deleteSummary ? (
+        <Panel title={t.unit.remove.title}>
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <p className="max-w-2xl text-[13px] text-muted">{t.unit.remove.body}</p>
+            <Sheet
+              title={t.unit.remove.sheetTitle.replace("{code}", u.code)}
+              triggerLabel={t.unit.remove.open}
+              triggerIcon={<Trash2 />}
+              triggerVariant="danger"
+            >
+              <form action={deleteUnit} className="space-y-4">
+                {hidden}
+                <div>
+                  <p className="mb-1 text-[13px] font-medium">{t.unit.remove.deleted}</p>
+                  <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-[13px]">
+                    {Object.entries(deleteSummary.deleted).map(([k, n]) => (
+                      <li key={k} className={cn("flex justify-between", !n && "text-faint")}>
+                        <span>
+                          {t.unit.remove.kinds[k as keyof typeof t.unit.remove.kinds] ?? k}
+                        </span>
+                        <span className="tabular-nums">{formatNumber(locale, n)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="mb-1 text-[13px] font-medium">{t.unit.remove.unlinked}</p>
+                  <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-[13px]">
+                    {Object.entries(deleteSummary.unlinked).map(([k, n]) => (
+                      <li key={k} className={cn("flex justify-between", !n && "text-faint")}>
+                        <span>
+                          {t.unit.remove.kinds[k as keyof typeof t.unit.remove.kinds] ?? k}
+                        </span>
+                        <span className="tabular-nums">{formatNumber(locale, n)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-2xs text-muted">{t.unit.remove.unlinkedHint}</p>
+                </div>
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800">
+                  {t.unit.remove.warning}
+                </p>
+                <Field label={t.unit.remove.confirm.replace("{code}", u.code)} required>
+                  <Input name="confirm_code" required autoComplete="off" placeholder={u.code} />
+                </Field>
+                <SheetFooter>
+                  <SubmitButton variant="danger">{t.unit.remove.submit}</SubmitButton>
+                </SheetFooter>
+              </form>
+            </Sheet>
+          </div>
+        </Panel>
+      ) : null}
     </div>
   );
 }
