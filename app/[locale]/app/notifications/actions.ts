@@ -7,7 +7,7 @@ import { formLocale, str, withFlash } from "@/lib/form";
 
 /** Only in-app paths are followed, so a stored link can never send someone off-site. */
 const safeLink = (link: string) =>
-  /^\/app\/[\w\-/?=&.]*$/.test(link) ? link : "/app/notifications";
+  /^\/(app|report)\/[\w\-/?=&.]*$/.test(link) ? link : "/app/notifications";
 
 export async function openNotification(fd: FormData) {
   const locale = formLocale(fd);

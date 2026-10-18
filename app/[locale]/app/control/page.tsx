@@ -1,5 +1,13 @@
 import type { Metadata } from "next";
-import { AlertTriangle, CircleDollarSign, FileClock, HardHat, Home, Wallet } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarRange,
+  CircleDollarSign,
+  FileClock,
+  HardHat,
+  Home,
+  Wallet,
+} from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -7,6 +15,7 @@ import { formatMoneyCompact, formatNumber, formatPercent } from "@/lib/format";
 import { soldStatuses } from "@/lib/status";
 import { loadControlCenter, timelineColumns, type TimelineEvent } from "@/lib/control";
 import { PageHeader } from "@/components/ui/page-header";
+import { ButtonLink } from "@/components/ui/button";
 import { Kpi, KpiStrip } from "@/components/ui/kpi";
 import { Panel } from "@/components/ui/panel";
 import { Tabs } from "@/components/ui/tabs";
@@ -286,10 +295,19 @@ export default async function ControlCenter({
         title={c.title}
         subtitle={c.subtitle}
         actions={
-          <ProjectFilter
-            projects={data.allProjects.map((p) => ({ id: p.id, label: `${p.code} · ${p.name}` }))}
-            allLabel={c.allProjects}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <ButtonLink
+              href={`/${locale}/report/monthly${project ? `?project=${project}` : ""}`}
+              size="sm"
+            >
+              <CalendarRange />
+              {t.monthlyReport.open}
+            </ButtonLink>
+            <ProjectFilter
+              projects={data.allProjects.map((p) => ({ id: p.id, label: `${p.code} · ${p.name}` }))}
+              allLabel={c.allProjects}
+            />
+          </div>
         }
       />
 
