@@ -134,6 +134,7 @@ export default async function ProjectFinance({
       .from("cash_accounts")
       .select("id,code,name,account_kind")
       .eq("active", true)
+      .or(`project_id.is.null,project_id.eq.${id}`)
       .order("code"),
     supabase
       .from("cost_allocation_runs")

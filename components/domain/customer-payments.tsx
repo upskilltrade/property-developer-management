@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Receipt, Upload, Wallet } from "lucide-react";
+import { Landmark, Receipt, Upload, Wallet } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n/dictionaries/th";
 import type { Locale } from "@/lib/i18n/config";
 import { label } from "@/lib/i18n/label";
@@ -10,7 +10,9 @@ import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Sheet } from "@/components/ui/sheet";
+import { CopyButton } from "@/components/ui/copy-button";
 import { EvidenceUploadForm } from "@/components/domain/evidence-upload-form";
+import { formatAccountNumber } from "@/lib/bank";
 
 export type CustomerUnitPayments = {
   unit_id: string;
@@ -31,16 +33,83 @@ export type CustomerUnitPayments = {
   }[];
 };
 
+export type CustomerBankAccount = {
+  id: string;
+  project_id: string;
+  bank_name: string | null;
+  account_name: string | null;
+  account_number: string | null;
+  branch: string | null;
+  account_type: string | null;
+  promptpay_id: string | null;
+  is_default: boolean;
+};
+
+/** Where to transfer: the project's customer-visible accounts, main account first. */
+function TransferAccounts({
+  accounts,
+  t,
+}: {
+  accounts: CustomerBankAccount[];
+  t: Pick<Dictionary, "bank">;
+}) {
+  const b = t.bank;
+  return (
+    <div className="border-b border-line bg-subtle/60 px-4 py-3">
+      <p className="mb-2 flex items-center gap-1.5 text-[13px] font-medium">
+        <Landmark className="size-4 text-brand" />
+        {b.customer.title}
+      </p>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {accounts.map((a) => (
+          <li key={a.id} className="rounded-md border border-line bg-surface px-3 py-2 text-[13px]">
+            <p className="flex flex-wrap items-center gap-1.5 text-2xs text-muted">
+              {a.bank_name}
+              {a.branch ? ` · ${a.branch}` : ""}
+              {a.account_type ? ` · ${b.types[a.account_type as keyof typeof b.types] ?? ""}` : ""}
+              {a.is_default ? (
+                <span className="rounded bg-brand-soft px-1.5 py-0.5 text-[10px] text-brand">
+                  {b.customer.recommended}
+                </span>
+              ) : null}
+            </p>
+            <p className="flex items-center justify-between gap-2">
+              <span className="font-mono text-base font-semibold tracking-wide">
+                {formatAccountNumber(a.account_number)}
+              </span>
+              {a.account_number ? (
+                <CopyButton value={a.account_number} label={b.customer.copy} />
+              ) : null}
+            </p>
+            <p className="text-2xs">{a.account_name}</p>
+            {a.promptpay_id ? (
+              <p className="mt-1 flex items-center justify-between gap-2 text-2xs text-muted">
+                <span>
+                  {b.customer.promptpay}: <span className="font-mono">{a.promptpay_id}</span>
+                </span>
+                <CopyButton value={a.promptpay_id} label={b.customer.copy} />
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-2xs text-muted">{b.customer.hint}</p>
+    </div>
+  );
+}
+
 /** Customer's installments: status from verified payments, slip upload, rejections and receipts. */
 export function CustomerPayments({
   data,
+  accounts = [],
   locale,
   t,
   action,
 }: {
   data: CustomerUnitPayments | undefined;
+  accounts?: CustomerBankAccount[];
   locale: Locale;
-  t: Pick<Dictionary, "portal" | "payments" | "status" | "schedule">;
+  t: Pick<Dictionary, "portal" | "payments" | "status" | "schedule" | "bank">;
   action: (fd: FormData) => Promise<void>;
 }) {
   const c = t.portal.customer;
@@ -63,6 +132,9 @@ export function CustomerPayments({
         ) : null
       }
     >
+      {items.length && accounts.length && outstanding > 0 ? (
+        <TransferAccounts accounts={accounts} t={t} />
+      ) : null}
       {items.length && data ? (
         <ul className="divide-y divide-line">
           {items.map((s) => {
