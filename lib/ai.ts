@@ -13,10 +13,13 @@ export const AI_FALLBACK = {
 export const aiConfigured = () => Boolean(process.env.ANTHROPIC_API_KEY);
 
 export class AiRefusalError extends Error {}
+/** The answer hit max_tokens before the structured output was complete. */
+export class AiTooLongError extends Error {}
 
 /** Maps an SDK error to a short key the UI can translate. */
 export function aiErrorKey(e: unknown) {
   if (e instanceof AiRefusalError) return "refusal";
+  if (e instanceof AiTooLongError) return "too_long";
   if (e instanceof Anthropic.AuthenticationError) return "auth";
   if (e instanceof Anthropic.RateLimitError) return "rate_limit";
   if (e instanceof Anthropic.APIError) return "generic";
@@ -240,4 +243,94 @@ export async function extractQuotation(file: { media_type: string; data: string 
   });
   if (response.stop_reason === "refusal" || !response.parsed_output) throw new AiRefusalError();
   return { quote: response.parsed_output, usage: response.usage };
+}
+
+// ---------------------------------------------------------------- BOQ extraction
+
+const BoqDocument = z.object({
+  title: z.string().nullable(),
+  lines: z.array(
+    z.object({
+      section: z.string().nullable(),
+      item_code: z.string().nullable(),
+      description: z.string(),
+      uom: z.string().nullable(),
+      quantity: z.number().nullable(),
+      rate: z.number().nullable(),
+      amount: z.number().nullable(),
+      category_code: z.string().nullable(),
+    }),
+  ),
+  total_amount: z.number().nullable(),
+  notes: z.string().nullable(),
+});
+export type BoqExtraction = z.infer<typeof BoqDocument>;
+
+const BOQ_PROMPT = `You extract line items from a bill of quantities (BOQ / ใบแสดงปริมาณงานและราคา) for a Thai house builder. Copy values exactly as printed; use null for anything not present rather than guessing.
+
+- One entry in lines per priced or quantified work item. Do not output section headings, subtotal, total, VAT or discount rows as lines; put the heading a line belongs to in section.
+- description: the item text as printed (Thai or English). item_code: the item number if printed.
+- uom: the unit as printed (e.g. ตร.ม., ลบ.ม., ม., จุด, ชุด, เหมา). quantity and rate: numbers without separators. amount: the line total as printed.
+- When a BOQ gives material and labour rates separately, rate is their sum per unit and amount is the printed line total.
+- category_code: the code from COST CATEGORIES that best fits the item, or null if none fits. Never invent a code.
+- total_amount: the document's grand total before VAT if printed, else null. notes: conditions worth knowing (exclusions, validity), briefly, in the document's language.`;
+
+export async function extractBoq(
+  file: { media_type: string; data: string },
+  categories: { code: string; name: string }[],
+) {
+  const client = new Anthropic();
+  const block =
+    file.media_type === "application/pdf"
+      ? {
+          type: "document" as const,
+          source: {
+            type: "base64" as const,
+            media_type: "application/pdf" as const,
+            data: file.data,
+          },
+        }
+      : {
+          type: "image" as const,
+          source: {
+            type: "base64" as const,
+            media_type: file.media_type as AiImage["media_type"],
+            data: file.data,
+          },
+        };
+  const response = await client.beta.messages.parse({
+    model: AI_MODEL,
+    max_tokens: 16000,
+    system: BOQ_PROMPT,
+    output_config: { effort: "medium", format: betaZodOutputFormat(BoqDocument) },
+    ...AI_FALLBACK,
+    messages: [
+      {
+        role: "user",
+        content: [
+          block,
+          {
+            type: "text",
+            text: `COST CATEGORIES:\n${categories.map((c) => `${c.code}: ${c.name}`).join("\n")}\n\nExtract this BOQ.`,
+          },
+        ],
+      },
+    ],
+  });
+  // A BOQ too long for one answer is better split by the user than silently cut short.
+  if (response.stop_reason === "max_tokens") throw new AiTooLongError();
+  if (response.stop_reason === "refusal" || !response.parsed_output) throw new AiRefusalError();
+  const known = new Set(categories.map((c) => c.code));
+  const boq = response.parsed_output;
+  return {
+    boq: {
+      ...boq,
+      lines: boq.lines.slice(0, 500).map((l) => ({
+        ...l,
+        // A code the model made up is dropped; the reviewer picks the category.
+        category_code: l.category_code && known.has(l.category_code) ? l.category_code : null,
+      })),
+    },
+    usage: response.usage,
+  };
 }

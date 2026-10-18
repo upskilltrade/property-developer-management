@@ -33,6 +33,22 @@ export async function saveBoqItem(fd: FormData) {
   finish(error, "budget");
 }
 
+/** Reviewed lines from a BOQ document or CSV, added to the draft version in one call. */
+export async function addBoqItems(fd: FormData) {
+  const { supabase, finish } = await ctx(fd);
+  let items: unknown = null;
+  try {
+    items = JSON.parse(str(fd, "items"));
+  } catch {
+    items = null;
+  }
+  const { error } = await supabase.rpc("add_boq_items", {
+    target_version: str(fd, "version_id"),
+    items: Array.isArray(items) ? items : [],
+  });
+  finish(error, "budget");
+}
+
 export async function removeBoqItem(fd: FormData) {
   const { supabase, finish } = await ctx(fd);
   const { error } = await supabase.rpc("remove_boq_item", { target_item: str(fd, "item_id") });
