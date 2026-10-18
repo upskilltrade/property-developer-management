@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetFooter } from "@/components/ui/sheet";
 import { Field, Hidden, Input, Select, Textarea } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { VoItemsTable, type VoItemRow } from "@/components/domain/vo-items-table";
 
 export type CustomerRequest = {
   id: string;
@@ -28,6 +29,7 @@ export type CustomerOffer = {
   revisedScope: string;
   priceDelta: number;
   timeDeltaDays: number;
+  items: VoItemRow[];
 };
 
 /** Customer change requests and the variation offers to approve (each tied to the offered version). */
@@ -104,6 +106,9 @@ export function CustomerChanges({
                   </Badge>
                 </div>
                 <p className="whitespace-pre-line text-ink-2">{o.revisedScope}</p>
+                {o.items.length ? (
+                  <VoItemsTable locale={locale} items={o.items} labels={t.changes} />
+                ) : null}
                 <p className="text-2xs text-muted">
                   {o.unitCode} · v{o.version} · {c.price}{" "}
                   <b className="text-ink num">{formatMoney(locale, o.priceDelta)}</b> · {c.days}{" "}

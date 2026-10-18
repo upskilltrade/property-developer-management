@@ -153,7 +153,6 @@ export default async function AppLayout({
               handoverDone: t.flash.handoverDone,
               notHandedOver: t.flash.notHandedOver,
               lineIdRequired: t.flash.lineIdRequired,
-              renderNoUnit: t.flash.renderNoUnit,
               ai_not_configured: t.flash.ai_not_configured,
               ai_no_photos: t.flash.ai_no_photos,
               ai_refusal: t.flash.ai_refusal,
