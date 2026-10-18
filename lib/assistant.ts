@@ -5,6 +5,8 @@ import { loadControlCenter, timelineColumns, timelineHref, type ControlData } fr
 import { toNumber } from "@/lib/format";
 import { AI_MODEL } from "@/lib/ai";
 import { activityColumns, todayIso, weightedProgress, type Activity } from "@/lib/schedule";
+import { cashflow, computeForecast } from "@/lib/forecast";
+import { loadForecast } from "@/lib/forecast-data";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 type One<T> = T | T[] | null | undefined;
@@ -87,6 +89,17 @@ export const assistantTools: Anthropic.Beta.BetaTool[] = [
     name: "cost_analysis",
     description:
       "Cost by category for one project: approved budget, committed (POs), paid, certified claims, forecast at completion and variance, plus the largest purchase orders and approved variation-order costs that drive the forecast. Use for 'why is cost forecast above budget'.",
+    input_schema: {
+      type: "object",
+      properties: { project_code: { type: "string" } },
+      required: ["project_code"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "financial_plan",
+    description:
+      "The owner's project financial plan: forecast revenue and cost per category (lump-sum estimates) next to what has actually been paid and committed, tax and transfer amounts from the owner's own rates, net profit and margin, in-house sales vs sole agent comparison, budget left per house for giveaways or spec, and the monthly cash-flow low point. Use for expected profit, 'how much is left to spend', funding needs or sales-mode questions.",
     input_schema: {
       type: "object",
       properties: { project_code: { type: "string" } },
@@ -379,6 +392,66 @@ export function createToolRunner(supabase: Supabase, locale: string) {
               : null,
             link: `${projectLink(p.id)}/changes/${v.id}`,
           })),
+        };
+      }
+      case "financial_plan": {
+        const p = await resolveProject(input.project_code);
+        if ("error" in p) return p;
+        if (!p.id) return { error: "project_code is required" };
+        const f = await loadForecast(supabase, p.id);
+        if (!f.plan) {
+          const { data: allowed } = await supabase.rpc("can_view_finance", {
+            target_project: p.id,
+          });
+          return allowed === true
+            ? { plan: null, note: "No financial plan has been started for this project yet" }
+            : {
+                restricted: true,
+                reason: "Financial plan is visible to owner, admin and finance only",
+              };
+        }
+        const r = computeForecast(f.plan, f.lines, f.facts);
+        const other = computeForecast(
+          f.plan,
+          f.lines,
+          f.facts,
+          f.plan.sales_mode === "SELF" ? "AGENT" : "SELF",
+        );
+        const cash = cashflow(f.plan, r);
+        const missingRates = (
+          ["transfer_fee_pct", "business_tax_pct", "income_tax_pct"] as const
+        ).filter((k) => f.plan![k] == null);
+        return {
+          link: `${projectLink(p.id)}/forecast`,
+          note: "forecast = owner's estimate; actual_paid/committed = recorded figures from linked cost categories. Taxes use only the owner's rates; a missing rate counts as zero.",
+          period: { start: f.plan.start_month.slice(0, 7), end: cash.endMonth },
+          sales_mode: f.plan.sales_mode,
+          missing_rates: missingRates,
+          revenue_forecast: r.revenue,
+          sold: r.sold,
+          cost_forecast: r.costs,
+          derived_costs: r.derived,
+          profit_before_tax: r.profitBeforeTax,
+          net_profit: r.netProfit,
+          margin_pct: round(r.margin * 100),
+          target_margin_pct: f.plan.target_margin_pct,
+          headroom_per_house: r.headroomPerUnit,
+          other_sales_mode: {
+            mode: f.plan.sales_mode === "SELF" ? "AGENT" : "SELF",
+            costs: round(other.costs + other.derived.reduce((a, d) => a + d.amount, 0)),
+            net_profit: other.netProfit,
+          },
+          lines: r.lines.map((l) => ({
+            kind: l.kind,
+            category: l.category,
+            label: l.label,
+            forecast: l.forecast,
+            actual_paid: l.actual,
+            committed: l.committed,
+            remaining: l.remaining,
+            excluded_in_this_mode: l.excluded || undefined,
+          })),
+          cash_low_point: { month: cash.lowest.month, cumulative: cash.lowest.cumulative },
         };
       }
       case "procurement_risk": {

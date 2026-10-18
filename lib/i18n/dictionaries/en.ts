@@ -1472,6 +1472,7 @@ const en: Dictionary = {
       "Which payments are due in the next 30 days or overdue?",
       "Which materials or purchases are at risk of arriving late?",
       "Why is the cost forecast above budget?",
+      "What profit do we expect on Project 001, and how much is spent so far?",
       "Summarize Project 001",
     ],
     tools: {
@@ -1481,6 +1482,7 @@ const en: Dictionary = {
       critical_issues: "Checking critical issues",
       payments_due: "Checking instalments",
       cost_analysis: "Analysing cost",
+      financial_plan: "Reading the financial plan",
       procurement_risk: "Checking procurement risk",
       unit_details: "Reading unit details",
       recent_activity: "Reading recent timeline",
