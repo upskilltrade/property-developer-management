@@ -15,14 +15,7 @@ import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
 import { formatDate, formatDateTime, formatMoney, toNumber, today } from "@/lib/format";
 import { localDateTime } from "@/lib/sales";
-import {
-  checklistItems,
-  handoverSteps,
-  handoverTone,
-  inspectionPurposes,
-  itemKinds,
-  srTone,
-} from "@/lib/handover";
+import { handoverSteps, handoverTone, inspectionPurposes, itemKinds, srTone } from "@/lib/handover";
 import { defectTone, inspectionTone, severities, severityTone } from "@/lib/site";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +24,7 @@ import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/u
 import { SubmitButton } from "@/components/ui/submit-button";
 import { buttonClass } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { hasReference, parseChecklist, type ChecklistItem } from "@/lib/standards";
 import { StorageUploadForm } from "@/components/domain/storage-upload-form";
 import {
   acceptHandover,
@@ -154,7 +148,11 @@ export default async function UnitHandover({
     : { data: [] };
   const fileUrl = new Map((signed ?? []).map((x) => [x.path, x.signedUrl]));
   const template = (templates ?? []).find((x) => x.id === templateId);
-  const templateItems = template ? checklistItems(template.items) : [];
+  // A template's rows carry their standard references; without one, free rows suit ad-hoc
+  // (customer) inspections only — QC rows without a reference are rejected by the database.
+  const templateItems: ChecklistItem[] = template
+    ? parseChecklist(template.items)
+    : [{ item: "" }, { item: "" }, { item: "" }];
   const partners = [
     ...new Map(
       (assigned ?? [])
@@ -393,22 +391,45 @@ export default async function UnitHandover({
                         </Select>
                       </Field>
                     ) : null}
-                    {[...templateItems, "", "", ""].map((item, i) => (
-                      <div key={i} className="grid grid-cols-[1fr_6rem_6rem_1fr] gap-2">
-                        <Input name="item_text" defaultValue={item} placeholder={s.title} />
-                        <Select name="item_result" defaultValue="PASS">
-                          <option value="PASS">{h.pass}</option>
-                          <option value="FAIL">{h.fail}</option>
-                          <option value="NA">{h.na}</option>
-                        </Select>
-                        <Select name="item_severity" defaultValue="MEDIUM" title={h.severity}>
-                          {severities.map((x) => (
-                            <option key={x} value={x}>
-                              {t.status.severity[x]}
-                            </option>
-                          ))}
-                        </Select>
-                        <Input name="item_note" placeholder={s.notes} />
+                    {templateItems.map((it, i) => (
+                      <div key={i} className="space-y-1 rounded-md border border-line p-2">
+                        <div className="grid grid-cols-[1fr_6rem_6rem_1fr] gap-2">
+                          <Hidden
+                            values={{
+                              item_standard_id: it.standard_id ?? "",
+                              item_clause: it.clause ?? "",
+                              item_criterion: it.criterion ?? "",
+                            }}
+                          />
+                          <Input
+                            name="item_text"
+                            defaultValue={it.item}
+                            readOnly={Boolean(template)}
+                            placeholder={s.title}
+                          />
+                          <Select name="item_result" defaultValue="PASS">
+                            <option value="PASS">{h.pass}</option>
+                            <option value="FAIL">{h.fail}</option>
+                            <option value="NA">{h.na}</option>
+                          </Select>
+                          <Select name="item_severity" defaultValue="MEDIUM" title={h.severity}>
+                            {severities.map((x) => (
+                              <option key={x} value={x}>
+                                {t.status.severity[x]}
+                              </option>
+                            ))}
+                          </Select>
+                          <Input name="item_note" placeholder={s.notes} />
+                        </div>
+                        {hasReference(it) ? (
+                          <p className="text-2xs text-muted">
+                            <span className="font-medium text-ink-2">
+                              {t.standards.reference}: {it.standard_code} · {it.clause}
+                            </span>{" "}
+                            — {it.criterion}
+                            {it.method ? ` (${it.method})` : ""}
+                          </p>
+                        ) : null}
                       </div>
                     ))}
                     <label className="flex items-center gap-2 text-[13px]">

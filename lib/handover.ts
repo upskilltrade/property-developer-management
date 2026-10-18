@@ -1,4 +1,5 @@
 import type { Tone } from "@/lib/status";
+import { standardsErrorKey } from "@/lib/standards";
 
 export const handoverSteps = [
   "NOT_READY",
@@ -33,18 +34,11 @@ export const srTone: Record<string, Tone> = {
   REJECTED: "neutral",
 };
 
-/** Checklist template items are stored as [{ item }] (or plain strings). */
-export function checklistItems(items: unknown): string[] {
-  return Array.isArray(items)
-    ? items
-        .map((x) => (typeof x === "string" ? x : (x as { item?: string })?.item))
-        .filter((x): x is string => !!x && !!x.trim())
-    : [];
-}
-
 /** Maps handover/warranty RPC exceptions to flash keys. */
 export function handoverErrorKey(message: string | undefined) {
   if (!message) return "error";
+  const reference = standardsErrorKey(message);
+  if (reference) return reference;
   if (message.includes("Not authorized")) return "permission";
   if (message.includes("Construction not complete")) return "notComplete";
   if (message.includes("Critical defects")) return "criticalDefects";

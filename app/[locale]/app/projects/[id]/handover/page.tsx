@@ -6,7 +6,9 @@ import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
 import { formatDate, toNumber } from "@/lib/format";
-import { checklistItems, handoverTone, inspectionPurposes, srTone } from "@/lib/handover";
+import { handoverTone, inspectionPurposes, srTone } from "@/lib/handover";
+import { hasReference, parseChecklist } from "@/lib/standards";
+import { ChecklistEditor } from "@/components/domain/checklist-editor";
 import { Panel } from "@/components/ui/panel";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -239,6 +241,51 @@ export default async function ProjectHandover({
         .order("code"),
       supabase.from("checklist_templates").select("id,code,name,purpose,items").order("code"),
     ]);
+    const { data: verified } = await supabase
+      .from("inspection_standards")
+      .select("id,code,title")
+      .eq("status", "VERIFIED")
+      .order("code");
+    const standardOptions = (verified ?? []).map((x) => ({
+      id: x.id,
+      label: `${x.code} · ${x.title}`,
+    }));
+    const editor = (tpl?: { code: string; name: string; purpose: string; items: unknown }) => (
+      <form action={saveChecklist} className="space-y-3">
+        <Hidden values={ctx} />
+        <FormGrid cols={3}>
+          <Field label={h.code} required>
+            <Input
+              name="code"
+              required
+              placeholder="PRE-HO"
+              defaultValue={tpl?.code}
+              readOnly={Boolean(tpl)}
+            />
+          </Field>
+          <Field label={h.purpose}>
+            <Select name="purpose" defaultValue={tpl?.purpose ?? "PRE_HANDOVER"}>
+              {inspectionPurposes.map((p) => (
+                <option key={p} value={p}>
+                  {t.status.inspectionPurpose[p]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={t.common.name} required>
+            <Input name="name" required defaultValue={tpl?.name} />
+          </Field>
+        </FormGrid>
+        <ChecklistEditor
+          standards={standardOptions}
+          labels={t.standards}
+          initial={tpl ? parseChecklist(tpl.items) : []}
+        />
+        <SheetFooter>
+          <SubmitButton disabled={!standardOptions.length}>{t.common.save}</SubmitButton>
+        </SheetFooter>
+      </form>
+    );
     return (
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel
@@ -313,32 +360,7 @@ export default async function ProjectHandover({
           title={h.checklists}
           actions={
             <Sheet title={h.newChecklist} triggerLabel={h.newChecklist} triggerSize="xs">
-              <form action={saveChecklist} className="space-y-3">
-                <Hidden values={ctx} />
-                <FormGrid cols={3}>
-                  <Field label={h.code} required>
-                    <Input name="code" required placeholder="PRE-HO" />
-                  </Field>
-                  <Field label={h.purpose}>
-                    <Select name="purpose" defaultValue="PRE_HANDOVER">
-                      {inspectionPurposes.map((p) => (
-                        <option key={p} value={p}>
-                          {t.status.inspectionPurpose[p]}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label={t.common.name} required>
-                    <Input name="name" required />
-                  </Field>
-                </FormGrid>
-                <Field label={h.checklistItems} required>
-                  <Textarea name="items" required rows={8} />
-                </Field>
-                <SheetFooter>
-                  <SubmitButton>{t.common.save}</SubmitButton>
-                </SheetFooter>
-              </form>
+              {editor()}
             </Sheet>
           }
         >
@@ -350,7 +372,31 @@ export default async function ProjectHandover({
                   <Badge tone="neutral" className="ml-2">
                     {label(t.status.inspectionPurpose, c.purpose)}
                   </Badge>
-                  <p className="text-2xs text-muted">{checklistItems(c.items).join(" · ")}</p>
+                  <Sheet
+                    title={`${c.code} · ${c.name}`}
+                    triggerLabel={t.standards.edit}
+                    triggerVariant="ghost"
+                    triggerSize="xs"
+                    width="lg"
+                  >
+                    {editor(c)}
+                  </Sheet>
+                  {parseChecklist(c.items).some((i) => !hasReference(i)) ? (
+                    <p className="mt-1 text-2xs text-amber-800">{t.standards.missingReference}</p>
+                  ) : null}
+                  <ol className="mt-1 list-decimal space-y-0.5 pl-5 text-2xs text-muted">
+                    {parseChecklist(c.items).map((i, n) => (
+                      <li key={n}>
+                        <span className="text-ink-2">{i.item}</span>
+                        {hasReference(i) ? (
+                          <span>
+                            {" "}
+                            — {t.standards.reference}: {i.standard_code} {i.clause}
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ol>
                 </li>
               ))}
             </ul>
