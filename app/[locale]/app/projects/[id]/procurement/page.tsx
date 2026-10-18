@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FilePlus2, Receipt, ShoppingCart, Trash2, Wallet } from "lucide-react";
+import { FilePlus2, FileUp, Receipt, ShoppingCart, Trash2, Wallet } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -16,6 +16,8 @@ import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/u
 import { SubmitButton } from "@/components/ui/submit-button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/components/ui/cn";
+import { BoqImport } from "@/components/domain/boq-import";
+import { aiConfigured } from "@/lib/ai";
 import {
   cancelOrder,
   certifyClaim,
@@ -24,6 +26,7 @@ import {
   decideOrder,
   newBudgetVersion,
   receiveOrder,
+  addBoqItems,
   removeBoqItem,
   saveBoqItem,
   setThreshold,
@@ -363,6 +366,23 @@ export default async function ProjectProcurement({
                       triggerSize="xs"
                     >
                       {itemForm()}
+                    </Sheet>
+                    <Sheet
+                      title={t.boqImport.title}
+                      triggerLabel={t.boqImport.open}
+                      triggerIcon={<FileUp />}
+                      triggerVariant="secondary"
+                      triggerSize="xs"
+                      width="lg"
+                    >
+                      <BoqImport
+                        action={addBoqItems}
+                        hidden={{ ...ctx, version_id: current.id }}
+                        categories={categories ?? []}
+                        extractUrl={`${base}/boq-extract`}
+                        aiEnabled={aiConfigured()}
+                        labels={{ ...t.boqImport.form, errors: t.assistant.errors }}
+                      />
                     </Sheet>
                     <form action={submitBudget}>
                       <Hidden values={{ ...ctx, version_id: current.id }} />
