@@ -50,8 +50,12 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     if (sold) {
       soldUnits++;
       soldValue += toNumber(sale?.agreed_price ?? u.list_price);
-    } else if (toNumber(u.list_price) > 0) unsoldListValue += toNumber(u.list_price);
-    else unpricedUnits++;
+    } else {
+      // Asking price, or a price already agreed on a house not yet marked sold.
+      const price = toNumber(u.list_price) || toNumber(sale?.agreed_price);
+      if (price > 0) unsoldListValue += price;
+      else unpricedUnits++;
+    }
     totalFloorArea += toNumber(
       one(u.house_types as One<{ gross_floor_area_sqm: number | null }>)?.gross_floor_area_sqm,
     );

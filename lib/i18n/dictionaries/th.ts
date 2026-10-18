@@ -443,6 +443,8 @@ const th = {
       phone: "โทรศัพท์",
       email: "อีเมล",
       agreedPrice: "ราคาตกลงขาย",
+      listPriceHint: "ราคาที่ตั้งขาย แผนการเงินใช้กับหลังที่ยังไม่ขาย",
+      agreedPriceHint: "ราคาที่ตกลงกับลูกค้าจริง กรอกเมื่อจอง/ทำสัญญา",
       reservationDate: "วันจอง",
       contractDate: "วันทำสัญญา",
       transferDate: "วันโอน",

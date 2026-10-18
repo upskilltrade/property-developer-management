@@ -448,6 +448,8 @@ const en: Dictionary = {
       phone: "Phone",
       email: "Email",
       agreedPrice: "Agreed price",
+      listPriceHint: "Asking price; the financial plan uses it for unsold houses",
+      agreedPriceHint: "Price actually agreed with the customer, at booking/contract",
       reservationDate: "Reservation date",
       contractDate: "Contract date",
       transferDate: "Transfer date",

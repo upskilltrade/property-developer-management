@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { formLocale, num, optStr, str, withFlash } from "@/lib/form";
+import { formLocale, num, numText, optStr, str, withFlash } from "@/lib/form";
 import { constructionStages, unitStatuses } from "@/lib/status";
 
 async function context(fd: FormData) {
@@ -66,6 +66,9 @@ export async function saveFinancials(fd: FormData) {
 export async function saveSale(fd: FormData) {
   const { projectId, unitId, supabase, back, done } = await context(fd);
   const status = str(fd, "status") || "AVAILABLE";
+  const listPrice = numText(fd, "list_price");
+  const agreedPrice = numText(fd, "agreed_price");
+  if (listPrice === null || agreedPrice === null) redirect(withFlash(back, "error", "number"));
   if (!(unitStatuses as readonly string[]).includes(status))
     redirect(withFlash(back, "error", "invalid"));
 
@@ -101,7 +104,7 @@ export async function saveSale(fd: FormData) {
       unit_id: unitId,
       customer_id: customerId,
       status,
-      agreed_price: num(fd, "agreed_price"),
+      agreed_price: agreedPrice ? Number(agreedPrice) : null,
       reservation_date: optStr(fd, "reservation_date"),
       contract_date: optStr(fd, "contract_date"),
       transfer_date: optStr(fd, "transfer_date"),
@@ -114,7 +117,11 @@ export async function saveSale(fd: FormData) {
 
   const { error: unitError } = await supabase
     .from("units")
-    .update({ status, updated_at: now() })
+    .update({
+      status,
+      ...(fd.has("list_price") ? { list_price: listPrice ? Number(listPrice) : null } : {}),
+      updated_at: now(),
+    })
     .eq("id", unitId)
     .eq("project_id", projectId);
   done(unitError, "sale");
