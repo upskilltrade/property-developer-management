@@ -272,15 +272,28 @@ export default async function Unit360({
                     <Input name="email" type="email" defaultValue={customer?.email ?? ""} />
                   </Field>
                 </FormGrid>
-                <Field label={`${t.unit.fields.agreedPrice} (THB)`}>
-                  <Input
-                    name="agreed_price"
-                    type="number"
-                    min="0"
-                    step="1000"
-                    defaultValue={sale?.agreed_price ?? ""}
-                  />
-                </Field>
+                <FormGrid>
+                  <Field
+                    label={`${t.project.fields.listPrice} (THB)`}
+                    hint={t.unit.fields.listPriceHint}
+                  >
+                    <Input
+                      name="list_price"
+                      inputMode="decimal"
+                      defaultValue={u.list_price ?? ""}
+                    />
+                  </Field>
+                  <Field
+                    label={`${t.unit.fields.agreedPrice} (THB)`}
+                    hint={t.unit.fields.agreedPriceHint}
+                  >
+                    <Input
+                      name="agreed_price"
+                      inputMode="decimal"
+                      defaultValue={sale?.agreed_price ?? ""}
+                    />
+                  </Field>
+                </FormGrid>
                 <FormGrid cols={3}>
                   <Field label={t.unit.fields.reservationDate}>
                     <Input
