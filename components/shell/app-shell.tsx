@@ -209,7 +209,7 @@ export function AppShell({
               labels={labels}
             />
           ) : null}
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex shrink-0 items-center gap-1">
             {notifications ? (
               <Link
                 href={notifications.href}
@@ -274,11 +274,11 @@ function ProjectSwitcher({
     : projects;
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative min-w-0 max-w-[52vw] sm:max-w-xs">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex h-8 max-w-[52vw] items-center gap-2 rounded-md border border-line px-2.5 text-[13px] hover:bg-subtle sm:max-w-xs"
+        className="flex h-8 max-w-full items-center gap-2 rounded-md border border-line px-2.5 text-[13px] hover:bg-subtle"
       >
         <Building2 className="size-3.5 shrink-0 text-muted" />
         {current ? (
@@ -386,7 +386,7 @@ function UserMenu({
         <span className="grid size-6 place-items-center rounded-full bg-slate-800 text-[10px] font-semibold text-white">
           {initials}
         </span>
-        <ChevronDown className="size-3.5 text-faint" />
+        <ChevronDown className="hidden size-3.5 text-faint sm:block" />
       </button>
       {open ? (
         <div className="absolute top-9 right-0 z-40 w-64 overflow-hidden rounded-lg border border-line bg-surface shadow-xl">
