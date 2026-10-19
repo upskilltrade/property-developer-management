@@ -66,3 +66,30 @@ export const contractTone: Record<string, Tone> = {
   SIGNED: "success",
   CANCELLED: "neutral",
 };
+
+export const ownershipTypes = ["FREEHOLD", "LEASEHOLD", "SPLIT"] as const;
+export const contractPartKinds = [
+  "LAND_LEASE",
+  "BUILDING_SALE",
+  "CONSTRUCTION",
+  "LAND_SALE",
+  "OTHER",
+] as const;
+/** Longest registrable lease of immovable property (Civil and Commercial Code s.540). */
+export const MAX_LEASE_YEARS = 30;
+
+/**
+ * Whether a free-text nationality reads as Thai. Blank counts as Thai (most customers), so the
+ * foreign-buyer warning only appears when someone actually recorded another nationality.
+ */
+export function isThaiNationality(value: string | null | undefined) {
+  const v = (value ?? "").trim().toLowerCase();
+  return !v || ["th", "tha", "thai", "thailand", "ไทย", "สัญชาติไทย"].includes(v);
+}
+
+/** Lease end = start + term in years (same day and month). */
+export function leaseEnd(start: string | null | undefined, years: number | null | undefined) {
+  if (!start || !years) return null;
+  const [y, m, d] = start.split("-").map(Number);
+  return `${y + years}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}

@@ -2,7 +2,8 @@ import { CalendarCheck, FileText, Home, Images, Sparkles } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
-import { formatDate, toNumber } from "@/lib/format";
+import { formatDate, formatMoney, toNumber } from "@/lib/format";
+import { leaseEnd } from "@/lib/sales";
 import { scheduleStages } from "@/lib/schedule";
 import { Panel } from "@/components/ui/panel";
 import { Sheet } from "@/components/ui/sheet";
@@ -119,6 +120,16 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
     ? await supabase.storage.from("contract-files").createSignedUrls(contractPaths, 600)
     : { data: [] };
   const contractUrl = new Map((contractUrls ?? []).map((x) => [x.path, x.signedUrl]));
+  const contractIds = (contracts ?? []).map((k) => k.id);
+  const { data: partRows } = contractIds.length
+    ? await supabase
+        .from("contract_parts")
+        .select("contract_id,kind,label,amount,lease_years,lease_start")
+        .in("contract_id", contractIds)
+        .is("removed_at", null)
+        .order("sort_order")
+    : { data: [] };
+  const partsOf = (id: string) => (partRows ?? []).filter((p) => p.contract_id === id);
   // Design: RLS returns only released revisions of customer-visible drawings and published selections.
   const [{ data: designRevs }, { data: designSels }, { data: designDecisions }] = await Promise.all(
     [
@@ -408,6 +419,14 @@ export default async function CustomerPortal({ params }: { params: Promise<{ loc
                             <p className="text-2xs text-muted">
                               {k.contract_no} · {date(k.signed_on)}
                             </p>
+                            {partsOf(k.id).map((p) => (
+                              <p key={p.label} className="text-2xs text-ink-2">
+                                {p.label} · {formatMoney(locale, p.amount)}
+                                {p.kind === "LAND_LEASE" && p.lease_years
+                                  ? ` · ${c.leaseUntil.replace("{years}", String(p.lease_years)).replace("{date}", date(leaseEnd(p.lease_start, p.lease_years)))}`
+                                  : ""}
+                              </p>
+                            ))}
                           </div>
                           {href ? (
                             <a

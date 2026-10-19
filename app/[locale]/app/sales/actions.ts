@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { formLocale, num, optStr, str, withFlash } from "@/lib/form";
+import { formLocale, num, numText, optStr, str, withFlash } from "@/lib/form";
 import { fromLocalDateTime } from "@/lib/sales";
 
 /** Maps RPC exceptions to flash keys the toast can explain. */
@@ -21,6 +21,9 @@ function errorKey(message: string | undefined) {
   if (message.includes("cannot be changed")) return "contractLocked";
   if (message.includes("file not uploaded")) return "contractFile";
   if (message.includes("Contact required")) return "contactRequired";
+  if (message.includes("do not add up")) return "partsTotal";
+  if (message.includes("Land lease part required")) return "leasePartRequired";
+  if (message.includes("Lease term")) return "leaseTerm";
   if (/Invalid|required|duplicate key/.test(message))
     return message.includes("duplicate") ? "unitUnavailable" : "invalid";
   return "sales";
@@ -229,4 +232,41 @@ export async function updateCustomer(fd: FormData) {
     },
   });
   finish(error, "customer");
+}
+
+export async function setContractOwnership(fd: FormData) {
+  const { supabase, finish } = await context(fd);
+  const { error } = await supabase.rpc("set_contract_ownership", {
+    target_contract: str(fd, "contract_id"),
+    new_type: str(fd, "ownership_type"),
+  });
+  finish(error, "contract");
+}
+
+export async function saveContractPart(fd: FormData) {
+  const { supabase, back, finish } = await context(fd);
+  const amount = numText(fd, "amount");
+  const years = numText(fd, "lease_years");
+  if (amount === null || years === null) redirect(withFlash(back, "error", "number"));
+  const { error } = await supabase.rpc("save_contract_part", {
+    target_contract: str(fd, "contract_id"),
+    data: {
+      id: optStr(fd, "part_id"),
+      kind: str(fd, "kind"),
+      label: str(fd, "label"),
+      amount,
+      lease_years: years,
+      lease_start: str(fd, "lease_start"),
+      land_office_no: str(fd, "land_office_no"),
+      registered_on: str(fd, "registered_on"),
+      notes: str(fd, "notes"),
+    },
+  });
+  finish(error, "contract");
+}
+
+export async function removeContractPart(fd: FormData) {
+  const { supabase, finish } = await context(fd);
+  const { error } = await supabase.rpc("remove_contract_part", { target_part: str(fd, "part_id") });
+  finish(error, "contract");
 }
