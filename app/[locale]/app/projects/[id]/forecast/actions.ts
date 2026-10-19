@@ -59,6 +59,9 @@ export async function saveForecastPlan(fd: FormData) {
       "developer_transfer_share_pct",
       "business_tax_pct",
       "income_tax_pct",
+      "lease_tax_pct",
+      "lease_fee_pct",
+      "construction_tax_pct",
     ]),
   };
   if (data.start_month && /^\d{4}-\d{2}$/.test(data.start_month)) data.start_month += "-01";

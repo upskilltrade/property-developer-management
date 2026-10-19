@@ -19,6 +19,7 @@ export const referenceRates = {
   income_tax_pct: "20",
 } as const;
 type RateKey = keyof typeof referenceRates;
+const leaseKeys = ["lease_tax_pct", "lease_fee_pct", "construction_tax_pct"] as const;
 
 type Labels = {
   start: string;
@@ -39,6 +40,11 @@ type Labels = {
   transferShare: string;
   businessTax: string;
   incomeTax: string;
+  leaseTitle: string;
+  leaseHint: string;
+  leaseTax: string;
+  leaseFee: string;
+  constructionTax: string;
   notes: string;
   save: string;
 };
@@ -138,6 +144,26 @@ export function ForecastPlanForm({
           <Input {...rate("income_tax_pct")} />
         </Field>
       </FormGrid>
+      <div className="space-y-2 rounded-md border border-line px-3 py-2">
+        <p className="text-[13px] font-medium">{labels.leaseTitle}</p>
+        <p className="text-2xs text-muted">{labels.leaseHint}</p>
+        <FormGrid cols={3}>
+          {leaseKeys.map((k) => (
+            <Field
+              key={k}
+              label={
+                k === "lease_tax_pct"
+                  ? labels.leaseTax
+                  : k === "lease_fee_pct"
+                    ? labels.leaseFee
+                    : labels.constructionTax
+              }
+            >
+              <Input name={k} inputMode="decimal" defaultValue={v(plan[k] ?? null)} />
+            </Field>
+          ))}
+        </FormGrid>
+      </div>
       <Field label={labels.notes}>
         <Textarea name="notes" defaultValue={plan.notes ?? ""} />
       </Field>

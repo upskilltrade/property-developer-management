@@ -27,6 +27,8 @@ export type ScheduleItem = {
   label_en: string;
   amount: number;
   due_date: string;
+  /** Which part of a leasehold/split contract this instalment pays for (optional). */
+  contract_part_id?: string | null;
 };
 
 const addMonths = (iso: string, months: number) => {

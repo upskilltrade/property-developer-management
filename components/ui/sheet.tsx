@@ -26,7 +26,7 @@ export function Sheet({
   triggerIcon?: ReactNode;
   triggerVariant?: "primary" | "secondary" | "ghost" | "danger";
   triggerSize?: "xs" | "sm" | "md";
-  width?: "md" | "lg";
+  width?: "md" | "lg" | "xl";
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -55,7 +55,7 @@ export function Sheet({
           // text-left: a sheet opened from a right-aligned table cell must not inherit its alignment.
           "fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-full whitespace-normal border-l border-line bg-surface p-0 text-left text-ink shadow-2xl",
           "backdrop:bg-slate-900/40 backdrop:backdrop-blur-[1px]",
-          width === "md" ? "max-w-md" : "max-w-2xl",
+          width === "md" ? "max-w-md" : width === "xl" ? "max-w-4xl" : "max-w-2xl",
         )}
       >
         <div className="flex h-full flex-col">
