@@ -1,22 +1,50 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FileCheck2, FilePen, FileText, Lock } from "lucide-react";
+import { AlertTriangle, FileCheck2, FilePen, FileText, Landmark, Lock, Plus } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
 import { formatDate, formatDateTime, formatMoney, today } from "@/lib/format";
-import { contractTone } from "@/lib/sales";
+import {
+  contractPartKinds,
+  contractTone,
+  isThaiNationality,
+  leaseEnd,
+  MAX_LEASE_YEARS,
+  ownershipTypes,
+} from "@/lib/sales";
 import { DetailList, Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Sheet } from "@/components/ui/sheet";
-import { Field, Hidden, Input } from "@/components/ui/field";
+import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
+import { SheetFooter } from "@/components/ui/sheet";
+import { Table, TD, TFoot, TH, THead, TR } from "@/components/ui/table";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { buttonClass } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { ContractTermsForm } from "@/components/domain/contract-terms-form";
 import { ContractSignForm } from "@/components/domain/contract-sign-form";
-import { cancelContract, reviseContract, signContract } from "../../actions";
+import {
+  cancelContract,
+  removeContractPart,
+  reviseContract,
+  saveContractPart,
+  setContractOwnership,
+  signContract,
+} from "../../actions";
+
+type Part = {
+  id: string;
+  kind: (typeof contractPartKinds)[number];
+  label: string;
+  amount: number;
+  lease_years: number | null;
+  lease_start: string | null;
+  land_office_no: string | null;
+  registered_on: string | null;
+  notes: string | null;
+};
 
 export const metadata: Metadata = { title: "Contract" };
 
@@ -36,7 +64,7 @@ export default async function ContractDetail({
   const { data: k } = await supabase
     .from("sales_contracts")
     .select(
-      "*,units(code),projects(code,name),customers(id,full_name,phone,email),bookings(booking_no,booking_date,list_price,agreed_price,lead_id),signer:profiles!sales_contracts_signed_by_fkey(display_name)",
+      "*,units(code),projects(code,name),customers(id,full_name,phone,email,nationality),bookings(booking_no,booking_date,list_price,agreed_price,lead_id),signer:profiles!sales_contracts_signed_by_fkey(display_name)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -46,6 +74,13 @@ export default async function ContractDetail({
     .select("*,author:profiles!sales_contract_versions_created_by_fkey(display_name)")
     .eq("contract_id", id)
     .order("version", { ascending: false });
+  const { data: partRows } = await supabase
+    .from("contract_parts")
+    .select("id,kind,label,amount,lease_years,lease_start,land_office_no,registered_on,notes")
+    .eq("contract_id", id)
+    .is("removed_at", null)
+    .order("sort_order");
+  const parts = (partRows ?? []).map((p) => ({ ...p, amount: Number(p.amount) })) as Part[];
   const fileUrl = k.signed_file_path
     ? (await supabase.storage.from("contract-files").createSignedUrl(k.signed_file_path, 600)).data
         ?.signedUrl
@@ -56,6 +91,75 @@ export default async function ContractDetail({
   const booking = one(k.bookings);
   const current = (versions ?? []).find((v) => v.version === k.current_version);
   const unitHref = `/${locale}/app/projects/${k.project_id}/units/${k.unit_id}`;
+  const o = c.ownership;
+  const draft = k.status === "DRAFT";
+  const ownership = (k.ownership_type ?? "FREEHOLD") as (typeof ownershipTypes)[number];
+  const foreignBuyer = !isThaiNationality(customer?.nationality);
+  const partsTotal = parts.reduce((a, p) => a + p.amount, 0);
+  const price = Number(current?.contract_price ?? 0);
+  const hiddenK = { locale, return_to: back, contract_id: k.id };
+  const partForm = (part?: Part) => (
+    <form action={saveContractPart} className="space-y-3">
+      <Hidden values={{ ...hiddenK, part_id: part?.id ?? "" }} />
+      {draft ? (
+        <>
+          <FormGrid>
+            <Field label={o.kind} required>
+              <Select name="kind" defaultValue={part?.kind ?? "LAND_LEASE"}>
+                {contractPartKinds.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {o.kinds[kind]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={o.amount} required>
+              <Input name="amount" inputMode="decimal" defaultValue={part?.amount || ""} />
+            </Field>
+          </FormGrid>
+          <Field label={o.label} required>
+            <Input name="label" required defaultValue={part?.label ?? ""} />
+          </Field>
+          <Field
+            label={o.leaseYears}
+            hint={o.leaseYearsHint.replace("{n}", String(MAX_LEASE_YEARS))}
+          >
+            <Input
+              name="lease_years"
+              inputMode="numeric"
+              defaultValue={part?.lease_years ?? MAX_LEASE_YEARS}
+            />
+          </Field>
+        </>
+      ) : (
+        <Hidden
+          values={{
+            kind: part?.kind ?? "",
+            label: part?.label ?? "",
+            amount: String(part?.amount ?? ""),
+            lease_years: String(part?.lease_years ?? ""),
+          }}
+        />
+      )}
+      <FormGrid cols={3}>
+        <Field label={o.leaseStart}>
+          <Input name="lease_start" type="date" defaultValue={part?.lease_start ?? ""} />
+        </Field>
+        <Field label={o.landOfficeNo}>
+          <Input name="land_office_no" defaultValue={part?.land_office_no ?? ""} />
+        </Field>
+        <Field label={o.registeredOn}>
+          <Input name="registered_on" type="date" defaultValue={part?.registered_on ?? ""} />
+        </Field>
+      </FormGrid>
+      <Field label={t.common.notes}>
+        <Textarea name="notes" defaultValue={part?.notes ?? ""} />
+      </Field>
+      <SheetFooter>
+        <SubmitButton>{t.common.save}</SubmitButton>
+      </SheetFooter>
+    </form>
+  );
 
   return (
     <div className="space-y-4">
@@ -121,7 +225,152 @@ export default async function ContractDetail({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
+        <div className="min-w-0 space-y-4 lg:col-span-2">
+          <Panel
+            title={o.title}
+            description={o.subtitle}
+            actions={
+              <Badge tone={ownership === "FREEHOLD" ? "neutral" : "info"}>
+                {o.types[ownership]}
+              </Badge>
+            }
+          >
+            <div className="space-y-3 px-4 py-3">
+              {foreignBuyer && ownership === "FREEHOLD" ? (
+                <p className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  {o.foreignWarning.replace("{nationality}", customer?.nationality ?? "")}
+                </p>
+              ) : null}
+              {draft ? (
+                <form action={setContractOwnership} className="flex flex-wrap items-end gap-2">
+                  <Hidden values={hiddenK} />
+                  <Field label={o.type}>
+                    <Select name="ownership_type" defaultValue={ownership}>
+                      {ownershipTypes.map((x) => (
+                        <option key={x} value={x}>
+                          {o.types[x]}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <SubmitButton variant="secondary">{o.apply}</SubmitButton>
+                </form>
+              ) : null}
+              <p className="text-2xs text-muted">{o.typeHints[ownership]}</p>
+            </div>
+            {ownership !== "FREEHOLD" ? (
+              <>
+                <Table>
+                  <THead>
+                    <tr>
+                      <TH>{o.label}</TH>
+                      <TH className="text-right">{o.amount}</TH>
+                      <TH>{o.lease}</TH>
+                      <TH>{o.registration}</TH>
+                      <TH />
+                    </tr>
+                  </THead>
+                  <tbody>
+                    {parts.map((p) => (
+                      <TR key={p.id}>
+                        <TD>
+                          <p className="font-medium">{p.label}</p>
+                          <p className="text-2xs text-muted">{o.kinds[p.kind]}</p>
+                        </TD>
+                        <TD className="text-right num">{formatMoney(locale, p.amount)}</TD>
+                        <TD className="text-2xs">
+                          {p.kind === "LAND_LEASE" ? (
+                            <>
+                              {o.years.replace("{n}", String(p.lease_years ?? "—"))}
+                              {p.lease_start ? (
+                                <span className="block text-muted">
+                                  {formatDate(locale, p.lease_start)} →{" "}
+                                  {formatDate(locale, leaseEnd(p.lease_start, p.lease_years))}
+                                </span>
+                              ) : null}
+                            </>
+                          ) : (
+                            "—"
+                          )}
+                        </TD>
+                        <TD className="text-2xs">
+                          {p.land_office_no || p.registered_on ? (
+                            <>
+                              {p.land_office_no ?? "—"}
+                              <span className="block text-muted">
+                                {formatDate(locale, p.registered_on)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-faint">{o.notRegistered}</span>
+                          )}
+                        </TD>
+                        <TD className="text-right">
+                          <div className="flex justify-end gap-1">
+                            {k.status !== "CANCELLED" ? (
+                              <Sheet
+                                title={p.label}
+                                description={draft ? undefined : o.signedEditHint}
+                                triggerLabel={t.common.edit}
+                                triggerVariant="ghost"
+                                triggerSize="xs"
+                              >
+                                {partForm(p)}
+                              </Sheet>
+                            ) : null}
+                            {draft ? (
+                              <form action={removeContractPart}>
+                                <Hidden values={{ ...hiddenK, part_id: p.id }} />
+                                <SubmitButton variant="ghost" size="xs">
+                                  {o.remove}
+                                </SubmitButton>
+                              </form>
+                            ) : null}
+                          </div>
+                        </TD>
+                      </TR>
+                    ))}
+                  </tbody>
+                  <TFoot>
+                    <tr>
+                      <TD className="font-semibold">{o.total}</TD>
+                      <TD
+                        className={cn(
+                          "text-right font-semibold num",
+                          partsTotal !== price && "text-red-700",
+                        )}
+                      >
+                        {formatMoney(locale, partsTotal)}
+                      </TD>
+                      <TD colSpan={3} className="text-2xs text-muted">
+                        {partsTotal === price
+                          ? o.totalMatches
+                          : o.totalMismatch.replace("{price}", formatMoney(locale, price))}
+                      </TD>
+                    </tr>
+                  </TFoot>
+                </Table>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-3">
+                  <p className="flex max-w-xl gap-1.5 text-2xs text-muted">
+                    <Landmark className="mt-0.5 size-3.5 shrink-0" />
+                    {o.legalNote}
+                  </p>
+                  {draft ? (
+                    <Sheet
+                      title={o.addPart}
+                      triggerLabel={o.addPart}
+                      triggerIcon={<Plus />}
+                      triggerVariant="secondary"
+                      triggerSize="xs"
+                    >
+                      {partForm()}
+                    </Sheet>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+          </Panel>
           <Panel title={c.versions}>
             <ol className="divide-y divide-line">
               {(versions ?? []).map((v) => {

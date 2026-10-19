@@ -126,8 +126,7 @@ describe("computeForecast", () => {
 describe("units without a list price", () => {
   it("uses the revenue line's price per house for unsold units that have no price yet", () => {
     const f = { ...facts, unsoldListValue: 0, unpricedUnits: 7 };
-    const rev = (rate: number) =>
-      computeForecast(plan, [{ ...lines[0], rate }], f).revenue;
+    const rev = (rate: number) => computeForecast(plan, [{ ...lines[0], rate }], f).revenue;
     expect(rev(0)).toBe(15_000_000);
     expect(rev(5_000_000)).toBe(50_000_000);
   });
