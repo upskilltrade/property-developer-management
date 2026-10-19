@@ -41,6 +41,10 @@ export type ForecastPlan = {
   developer_transfer_share_pct: number | null;
   business_tax_pct: number | null;
   income_tax_pct: number | null;
+  /** Rates for land-lease and construction-contract revenue (leasehold / split deals). */
+  lease_tax_pct?: number | null;
+  lease_fee_pct?: number | null;
+  construction_tax_pct?: number | null;
   notes: string | null;
 };
 
@@ -71,6 +75,9 @@ export type ForecastFacts = {
   unpricedUnits: number;
   collected: number;
   totalFloorArea: number;
+  /** Parts of sold houses' leasehold/split contracts that are a land lease or a construction contract. */
+  leaseRevenue?: number;
+  constructionRevenue?: number;
   /** Spending recorded against each cost category (posted payments / commitments). */
   actualByCategory: Map<string, { actual: number; committed: number }>;
 };
@@ -91,13 +98,23 @@ export type ComputedLine = ForecastLine & {
 };
 
 export type DerivedCost = {
-  key: "AGENT" | "TRANSFER" | "BUSINESS_TAX" | "INCOME_TAX";
+  key:
+    | "AGENT"
+    | "TRANSFER"
+    | "BUSINESS_TAX"
+    | "LEASE_TAX"
+    | "LEASE_FEE"
+    | "CONSTRUCTION_TAX"
+    | "INCOME_TAX";
   amount: number;
 };
 
 export type ForecastResult = {
   revenue: number;
+  /** House-sale revenue that pays transfer fee and specific business tax. */
   houseRevenue: number;
+  leaseRevenue: number;
+  constructionRevenue: number;
   lines: ComputedLine[];
   costs: number;
   derived: DerivedCost[];
@@ -133,9 +150,14 @@ export function computeForecast(
   };
   const revenueLines = lines.filter((l) => l.kind === "REVENUE");
   const revenue = revenueLines.reduce((a, l) => a + value(l, 0), 0);
-  const houseRevenue = revenueLines
+  const salesRevenue = revenueLines
     .filter((l) => l.category === "SALES_HOUSES")
     .reduce((a, l) => a + value(l, 0), 0);
+  // Land-lease and construction-contract parts are not a house sale: they leave the transfer-fee /
+  // business-tax base and use their own rates.
+  const leaseRevenue = Math.min(n(facts.leaseRevenue), salesRevenue);
+  const constructionRevenue = Math.min(n(facts.constructionRevenue), salesRevenue - leaseRevenue);
+  const houseRevenue = salesRevenue - leaseRevenue - constructionRevenue;
 
   const computed: ComputedLine[] = lines.map((l) => {
     const excluded = l.kind === "COST" && mode === "AGENT" && l.self_sales_only;
@@ -164,6 +186,15 @@ export function computeForecast(
     ),
   });
   derived.push({ key: "BUSINESS_TAX", amount: round(pct(plan.business_tax_pct) * houseRevenue) });
+  if (leaseRevenue > 0) {
+    derived.push({ key: "LEASE_TAX", amount: round(pct(plan.lease_tax_pct) * leaseRevenue) });
+    derived.push({ key: "LEASE_FEE", amount: round(pct(plan.lease_fee_pct) * leaseRevenue) });
+  }
+  if (constructionRevenue > 0)
+    derived.push({
+      key: "CONSTRUCTION_TAX",
+      amount: round(pct(plan.construction_tax_pct) * constructionRevenue),
+    });
   const beforeTax = round(revenue - costs - derived.reduce((a, d) => a + d.amount, 0));
   const incomeTax = round(Math.max(0, beforeTax) * pct(plan.income_tax_pct));
   derived.push({ key: "INCOME_TAX", amount: incomeTax });
@@ -189,6 +220,8 @@ export function computeForecast(
   return {
     revenue: round(revenue),
     houseRevenue: round(houseRevenue),
+    leaseRevenue: round(leaseRevenue),
+    constructionRevenue: round(constructionRevenue),
     lines: computed,
     costs: round(costs),
     derived,

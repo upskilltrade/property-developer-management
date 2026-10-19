@@ -18,6 +18,7 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     { data: payments },
     { data: cost },
     { data: categories },
+    { data: parts },
   ] = await Promise.all([
     supabase.from("forecast_plans").select("*").eq("project_id", projectId).maybeSingle(),
     supabase
@@ -37,7 +38,18 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     supabase.from("payments").select("amount").eq("project_id", projectId).eq("status", "VALID"),
     supabase.rpc("get_cost_report", { target_project: projectId }),
     supabase.from("cost_categories").select("id,code,name").eq("active", true).order("code"),
+    // Land-lease / construction parts of live leasehold or split contracts in this project.
+    supabase
+      .from("contract_parts")
+      .select("kind,amount,sales_contracts!inner(project_id,status,ownership_type)")
+      .eq("sales_contracts.project_id", projectId)
+      .neq("sales_contracts.status", "CANCELLED")
+      .neq("sales_contracts.ownership_type", "FREEHOLD")
+      .in("kind", ["LAND_LEASE", "CONSTRUCTION"])
+      .is("removed_at", null),
   ]);
+  const partTotal = (kind: string) =>
+    (parts ?? []).filter((x) => x.kind === kind).reduce((a, x) => a + toNumber(x.amount), 0);
 
   let soldValue = 0;
   let soldUnits = 0;
@@ -74,6 +86,8 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     unsoldListValue,
     unpricedUnits,
     collected: (payments ?? []).reduce((a, p) => a + toNumber(p.amount), 0),
+    leaseRevenue: partTotal("LAND_LEASE"),
+    constructionRevenue: partTotal("CONSTRUCTION"),
     totalFloorArea,
     actualByCategory,
   };
@@ -90,6 +104,9 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
           developer_transfer_share_pct: num(plan.developer_transfer_share_pct),
           business_tax_pct: num(plan.business_tax_pct),
           income_tax_pct: num(plan.income_tax_pct),
+          lease_tax_pct: num(plan.lease_tax_pct),
+          lease_fee_pct: num(plan.lease_fee_pct),
+          construction_tax_pct: num(plan.construction_tax_pct),
           notes: plan.notes,
         } as ForecastPlan)
       : null,

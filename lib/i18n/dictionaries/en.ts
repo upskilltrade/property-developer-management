@@ -713,6 +713,8 @@ const en: Dictionary = {
     noCustomer: "Add the customer to the sale first",
     buildSchedule: "Create payment schedule",
     replaceSchedule: "Edit schedule",
+    noPart: "— none —",
+    partTotals: "Instalments per contract part (scheduled / part price)",
     builderHint:
       "Starting figures come from the agreed price; every row is editable. The schedule can be replaced until the first payment.",
     price: "Agreed price",
@@ -720,6 +722,7 @@ const en: Dictionary = {
     total: "Total",
     difference: "Difference from price",
     cols: {
+      part: "Contract part",
       seq: "No.",
       label: "Item",
       kind: "Type",
@@ -1811,12 +1814,18 @@ const en: Dictionary = {
       remaining: "Remaining",
     },
     derived: {
+      LEASE_TAX: "Tax on land-lease revenue",
+      LEASE_FEE: "Lease registration fee",
+      CONSTRUCTION_TAX: "Tax on construction-contract revenue",
       AGENT: "Sole agent commission",
       TRANSFER: "Transfer fee (developer's share)",
       BUSINESS_TAX: "Specific business tax",
       INCOME_TAX: "Corporate income tax",
     },
     derivedHint: {
+      LEASE_TAX: "% × land-lease revenue",
+      LEASE_FEE: "% × land-lease revenue",
+      CONSTRUCTION_TAX: "% × construction-contract revenue",
       AGENT: "% × total revenue",
       TRANSFER: "transfer fee % × developer share × house sales",
       BUSINESS_TAX: "% × house sales",
@@ -1904,6 +1913,12 @@ const en: Dictionary = {
       transferShare: "Developer's share (% of transfer fee)",
       businessTax: "Specific business tax (%)",
       incomeTax: "Corporate income tax (% of profit)",
+      leaseTitle: "Houses sold as land lease / separate construction contract",
+      leaseHint:
+        "Land-lease and construction parts are not a house sale, so no transfer fee or business tax is charged on them. There is no verified reference rate yet; your accountant sets these. Blank counts as 0.",
+      leaseTax: "Tax on lease revenue (%)",
+      leaseFee: "Lease registration fee (%)",
+      constructionTax: "Tax on construction contract (%)",
       notes: "Notes",
     },
     cash: {

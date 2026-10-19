@@ -123,6 +123,31 @@ describe("computeForecast", () => {
   });
 });
 
+describe("leasehold / split deals", () => {
+  it("moves land-lease and construction parts out of the house-sale tax base", () => {
+    const f = { ...facts, leaseRevenue: 4_000_000, constructionRevenue: 6_000_000 };
+    const r = computeForecast(
+      { ...plan, lease_tax_pct: 5, lease_fee_pct: 1, construction_tax_pct: 7 },
+      lines,
+      f,
+    );
+    const d = Object.fromEntries(r.derived.map((x) => [x.key, x.amount]));
+    expect(r.houseRevenue).toBe(40_000_000);
+    expect(d.TRANSFER).toBe(400_000); // 2% × 50% × 40M
+    expect(d.BUSINESS_TAX).toBe(1_320_000); // 3.3% × 40M
+    expect(d.LEASE_TAX).toBe(200_000);
+    expect(d.LEASE_FEE).toBe(40_000);
+    expect(d.CONSTRUCTION_TAX).toBe(420_000);
+  });
+  it("adds no lease rows for an all-freehold project and treats missing rates as zero", () => {
+    expect(computeForecast(plan, lines, facts).derived.some((d) => d.key === "LEASE_TAX")).toBe(
+      false,
+    );
+    const r = computeForecast(plan, lines, { ...facts, leaseRevenue: 1_000_000 });
+    expect(r.derived.find((d) => d.key === "LEASE_TAX")!.amount).toBe(0);
+  });
+});
+
 describe("units without a list price", () => {
   it("uses the revenue line's price per house for unsold units that have no price yet", () => {
     const f = { ...facts, unsoldListValue: 0, unpricedUnits: 7 };

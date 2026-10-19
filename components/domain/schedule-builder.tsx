@@ -18,6 +18,7 @@ export function ScheduleBuilder({
   initial,
   price,
   locale,
+  parts = [],
   labels,
 }: {
   action: (fd: FormData) => Promise<void>;
@@ -25,7 +26,12 @@ export function ScheduleBuilder({
   initial: ScheduleItem[];
   price: number;
   locale: string;
+  /** Parts of a leasehold/split contract; when given, each row can be assigned to one. */
+  parts?: { id: string; label: string; amount: number }[];
   labels: {
+    part?: string;
+    noPart?: string;
+    partTotals?: string;
     hint: string;
     kind: string;
     labelTh: string;
@@ -55,7 +61,9 @@ export function ScheduleBuilder({
       <Hidden values={{ ...hidden, items: JSON.stringify(rows) }} />
       <p className="rounded-md bg-subtle px-3 py-2 text-2xs text-muted">{labels.hint}</p>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-[13px]">
+        <table
+          className={cn("w-full text-[13px]", parts.length ? "min-w-[820px]" : "min-w-[640px]")}
+        >
           <thead className="text-2xs text-muted">
             <tr>
               <th className="w-8 text-left font-medium">#</th>
@@ -64,6 +72,7 @@ export function ScheduleBuilder({
               <th className="text-left font-medium">{labels.labelEn}</th>
               <th className="w-36 text-left font-medium">{labels.due}</th>
               <th className="w-32 text-right font-medium">{labels.amount}</th>
+              {parts.length ? <th className="w-40 text-left font-medium">{labels.part}</th> : null}
               <th className="w-8" />
             </tr>
           </thead>
@@ -116,6 +125,22 @@ export function ScheduleBuilder({
                     onChange={(e) => set(i, { amount: Number(e.target.value) })}
                   />
                 </td>
+                {parts.length ? (
+                  <td className="py-1 pr-1">
+                    <select
+                      className={cell}
+                      value={r.contract_part_id ?? ""}
+                      onChange={(e) => set(i, { contract_part_id: e.target.value || null })}
+                    >
+                      <option value="">{labels.noPart}</option>
+                      {parts.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                ) : null}
                 <td className="py-1">
                   <button
                     type="button"
@@ -166,6 +191,26 @@ export function ScheduleBuilder({
           ) : null}
         </p>
       </div>
+      {parts.length ? (
+        <ul className="space-y-0.5 rounded-md bg-subtle px-3 py-2 text-2xs">
+          <li className="font-medium text-muted">{labels.partTotals}</li>
+          {parts.map((p) => {
+            const sum = rows
+              .filter((r) => r.contract_part_id === p.id)
+              .reduce((a, r) => a + (Number(r.amount) || 0), 0);
+            return (
+              <li key={p.id} className="flex justify-between gap-3">
+                <span>{p.label}</span>
+                <span
+                  className={cn("num", sum === p.amount ? "text-emerald-700" : "text-amber-700")}
+                >
+                  {money(sum)} / {money(p.amount)}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
       <SheetFooter>
         <SubmitButton disabled={!valid}>{labels.save}</SubmitButton>
       </SheetFooter>

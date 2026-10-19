@@ -396,7 +396,13 @@ export default async function ProjectForecast({
                       ? `${rateText(plan.transfer_fee_pct)} × ${rateText(plan.developer_transfer_share_pct)}`
                       : d.key === "BUSINESS_TAX"
                         ? rateText(plan.business_tax_pct)
-                        : rateText(plan.income_tax_pct)}
+                        : d.key === "LEASE_TAX"
+                          ? rateText(plan.lease_tax_pct ?? null)
+                          : d.key === "LEASE_FEE"
+                            ? rateText(plan.lease_fee_pct ?? null)
+                            : d.key === "CONSTRUCTION_TAX"
+                              ? rateText(plan.construction_tax_pct ?? null)
+                              : rateText(plan.income_tax_pct)}
                 </TD>
                 <TD align="right" className="font-medium num">
                   {money(d.amount)}

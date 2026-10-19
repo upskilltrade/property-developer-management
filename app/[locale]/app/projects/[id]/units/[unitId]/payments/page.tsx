@@ -44,6 +44,7 @@ type Installment = {
   outstanding: number | string;
   pending_evidence: number;
   payment_status: string;
+  contract_part_id: string | null;
 };
 
 export default async function UnitPayments({
@@ -81,11 +82,12 @@ export default async function UnitPayments({
     { data: paymentRows },
     { data: canVerify },
     { data: canSchedule },
+    { data: partRows },
   ] = await Promise.all([
     supabase
       .from("payment_schedule_status")
       .select(
-        "id,sequence,kind,label_th,label_en,amount,due_date,paid_amount,outstanding,pending_evidence,payment_status",
+        "id,sequence,kind,label_th,label_en,amount,due_date,paid_amount,outstanding,pending_evidence,payment_status,contract_part_id",
       )
       .eq("unit_id", unitId)
       .eq("status", "ACTIVE")
@@ -107,7 +109,22 @@ export default async function UnitPayments({
       .order("paid_on", { ascending: false }),
     supabase.rpc("can_verify_payments", { target_project: id }),
     supabase.rpc("can_manage_payment_schedule", { target_project: id }),
+    // Parts of this house's live leasehold/split contract, so instalments can be tied to one.
+    supabase
+      .from("contract_parts")
+      .select("id,label,amount,sales_contracts!inner(unit_id,status,ownership_type)")
+      .eq("sales_contracts.unit_id", unitId)
+      .neq("sales_contracts.status", "CANCELLED")
+      .neq("sales_contracts.ownership_type", "FREEHOLD")
+      .is("removed_at", null)
+      .order("sort_order"),
   ]);
+  const parts = (partRows ?? []).map((x) => ({
+    id: x.id,
+    label: x.label,
+    amount: toNumber(x.amount),
+  }));
+  const partName = new Map(parts.map((x) => [x.id, x.label]));
 
   const schedule = (scheduleRows ?? []) as Installment[];
   const evidence = evidenceRows ?? [];
@@ -141,6 +158,7 @@ export default async function UnitPayments({
       hidden={hidden}
       price={price}
       locale={locale}
+      parts={parts}
       initial={
         schedule.length
           ? schedule.map((s) => ({
@@ -149,6 +167,7 @@ export default async function UnitPayments({
               label_en: s.label_en,
               amount: toNumber(s.amount),
               due_date: s.due_date,
+              contract_part_id: s.contract_part_id,
             }))
           : defaultSchedule({
               price,
@@ -169,6 +188,9 @@ export default async function UnitPayments({
         difference: p.difference,
         save: t.common.save,
         kinds: t.status.paymentKind,
+        part: p.cols.part,
+        noPart: p.noPart,
+        partTotals: p.partTotals,
       }}
     />
   );
@@ -198,7 +220,7 @@ export default async function UnitPayments({
               title={schedule.length ? p.replaceSchedule : p.buildSchedule}
               triggerLabel={schedule.length ? p.replaceSchedule : p.buildSchedule}
               triggerVariant={schedule.length ? "secondary" : "primary"}
-              width="lg"
+              width={parts.length ? "xl" : "lg"}
             >
               {builder}
             </Sheet>
@@ -248,7 +270,12 @@ export default async function UnitPayments({
                   <TD className="text-muted num">{s.sequence}</TD>
                   <TD>
                     <p className="font-medium">{locale === "th" ? s.label_th : s.label_en}</p>
-                    <p className="text-2xs text-muted">{label(t.status.paymentKind, s.kind)}</p>
+                    <p className="text-2xs text-muted">
+                      {label(t.status.paymentKind, s.kind)}
+                      {s.contract_part_id && partName.get(s.contract_part_id)
+                        ? ` · ${partName.get(s.contract_part_id)}`
+                        : ""}
+                    </p>
                   </TD>
                   <TD className={s.payment_status === "OVERDUE" ? "text-red-700" : "text-muted"}>
                     {date(s.due_date)}
