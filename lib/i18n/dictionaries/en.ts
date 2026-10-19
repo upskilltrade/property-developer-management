@@ -60,7 +60,7 @@ const en: Dictionary = {
     leasePartRequired: "A lease structure needs a land lease part",
     leaseTerm: "Lease term must be 1–30 years",
     hasSchedule: "This unit already has a schedule",
-    noAccount: "No account uses that email; ask the customer to sign up first",
+    noAccount: "No login uses that email; enter a first password to create one for the customer",
     noCustomerForSchedule: "Add the customer to the sale before creating a payment schedule",
     scheduleHasPayments: "This schedule already has payments or evidence and cannot be replaced",
     selfVerifyPayment: "You submitted this evidence, so someone else must verify it",
@@ -482,6 +482,9 @@ const en: Dictionary = {
     linkHint:
       "The customer signs up first; enter the email they used. They will see only published progress and photos of this house.",
     accountEmail: "Customer account email",
+    firstPassword: "First password (if the customer has no login yet)",
+    firstPasswordHint:
+      "If this email has no login, one is created with this password (at least {n} characters). Give it to the customer yourself; they must change it on first sign-in. Leave blank if they already have a login.",
     accountLinked: "Account linked",
     accountNotLinked: "No account linked",
     fields: {

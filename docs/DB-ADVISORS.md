@@ -36,3 +36,13 @@ Supabase's database linter (security + performance advisors) was run against the
 - **auth_leaked_password_protection.** Turn on "Leaked password protection" under
   Authentication → Settings in the Supabase dashboard (it checks new passwords against
   HaveIBeenPwned). It can't be set from SQL.
+
+## Re-run 2026-10-19
+
+After the house-delete, member, contract-ownership and schedule migrations: security findings are
+the same accepted set (194 security-definer RPCs, `calendar_events` for anon, two deny-all tables,
+leaked-password protection still needs the dashboard). `202610191300_more_fk_indexes.sql` adds 14
+indexes on foreign keys the code filters or joins on (VO links, design-package parent, interested
+unit, schedule parent / assigned partner, defects partner, online payments, RFI drawing, forecast
+cost category). The remaining unindexed foreign keys are audit columns, `organization_id` and
+rarely joined references.

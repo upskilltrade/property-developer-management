@@ -16,9 +16,11 @@ function randomPassword(length = 10) {
 /** Password input for an owner setting someone's first password: generate, show and copy. */
 export function PasswordField({
   minLength,
+  required = true,
   labels,
 }: {
   minLength: number;
+  required?: boolean;
   labels: { generate: string; show: string; copy: string };
 }) {
   const [value, setValue] = useState("");
@@ -31,7 +33,7 @@ export function PasswordField({
           type={visible ? "text" : "password"}
           autoComplete="new-password"
           minLength={minLength}
-          required
+          required={required}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           className="font-mono"
