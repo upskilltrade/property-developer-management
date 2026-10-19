@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { KeyRound, ShieldCheck, ShieldPlus, UserPlus, Users } from "lucide-react";
+import { KeyRound, ShieldCheck, ShieldPlus, UserPlus, UserRoundPlus, Users } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -12,7 +12,17 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Sheet, SheetFooter } from "@/components/ui/sheet";
 import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { assignAccess, createRole, setOverride } from "./actions";
+import { formatDate } from "@/lib/format";
+import { canManageLogins, MIN_PASSWORD } from "@/lib/supabase/admin";
+import { PasswordField } from "@/components/domain/password-field";
+import {
+  assignAccess,
+  createMember,
+  createRole,
+  resetMemberPassword,
+  setMemberStatus,
+  setOverride,
+} from "./actions";
 
 export const metadata: Metadata = { title: "User access" };
 
@@ -32,29 +42,46 @@ type CatalogEntry = {
 
 export default async function AccessPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale, t } = await resolveLocale(params);
-  const { supabase, ownerOrganizationId: org } = await getSession(locale);
+  const { supabase, user, ownerOrganizationId: org } = await getSession(locale);
   if (!org) redirect(`/${locale}/app/access-denied`);
 
-  const [{ data: members }, { data: roles }, { data: projects }, { data: catalogRows }] =
-    await Promise.all([
-      supabase
-        .from("organization_memberships")
-        .select(
-          "id,user_id,status,profiles:user_id(display_name),membership_roles(scope_type,scope_id,role:roles(code,name_th,name_en))",
-        )
-        .eq("organization_id", org),
-      supabase
-        .from("roles")
-        .select("id,code,name_th,name_en,is_system")
-        .eq("organization_id", org)
-        .order("code"),
-      supabase.from("projects").select("id,name,code").eq("organization_id", org).order("code"),
-      supabase
-        .from("permission_catalog")
-        .select("id,module_code,action_code,name_th,name_en")
-        .eq("is_active", true)
-        .order("sort_order"),
-    ]);
+  const [
+    { data: members },
+    { data: roles },
+    { data: projects },
+    { data: catalogRows },
+    { data: directory },
+  ] = await Promise.all([
+    supabase
+      .from("organization_memberships")
+      .select(
+        "id,user_id,status,profiles:user_id(display_name),membership_roles(scope_type,scope_id,role:roles(code,name_th,name_en))",
+      )
+      .eq("organization_id", org),
+    supabase
+      .from("roles")
+      .select("id,code,name_th,name_en,is_system")
+      .eq("organization_id", org)
+      .order("code"),
+    supabase.from("projects").select("id,name,code").eq("organization_id", org).order("code"),
+    supabase
+      .from("permission_catalog")
+      .select("id,module_code,action_code,name_th,name_en")
+      .eq("is_active", true)
+      .order("sort_order"),
+    supabase.rpc("member_directory", { target_org: org }),
+  ]);
+  const login = new Map(
+    (
+      (directory ?? []) as {
+        membership_id: string;
+        email: string;
+        last_sign_in_at: string | null;
+        must_change_password: boolean;
+      }[]
+    ).map((d) => [d.membership_id, d]),
+  );
+  const loginsOn = canManageLogins();
   const memberIds = (members ?? []).map((m) => m.id);
   const roleIds = (roles ?? []).map((r) => r.id);
   const [{ data: overrides }, { data: rolePermissions }] = await Promise.all([
@@ -71,6 +98,11 @@ export default async function AccessPage({ params }: { params: Promise<{ locale:
   ]);
 
   const a = t.access;
+  const passwordLabels = {
+    generate: a.passwordGenerate,
+    show: a.passwordShow,
+    copy: a.passwordCopy,
+  };
   const catalog = (catalogRows ?? []) as CatalogEntry[];
   const modules = [...new Set(catalog.map((c) => c.module_code))];
   const permissionName = (c: CatalogEntry) =>
@@ -132,6 +164,53 @@ export default async function AccessPage({ params }: { params: Promise<{ locale:
         crumbs={[{ label: t.nav.dashboard, href: `/${locale}/app` }, { label: a.title }]}
         actions={
           <>
+            <Sheet
+              title={a.addUser}
+              description={a.addUserHint}
+              triggerLabel={a.addUser}
+              triggerIcon={<UserRoundPlus />}
+            >
+              {loginsOn ? (
+                <form action={createMember} className="space-y-3">
+                  <Hidden values={{ locale }} />
+                  <FormGrid>
+                    <Field label={a.userName} required>
+                      <Input name="display_name" required />
+                    </Field>
+                    <Field label={a.userEmail} required>
+                      <Input name="email" type="email" required autoComplete="off" />
+                    </Field>
+                  </FormGrid>
+                  <Field
+                    label={a.firstPassword}
+                    hint={a.firstPasswordHint.replace("{n}", String(MIN_PASSWORD))}
+                    required
+                  >
+                    <PasswordField minLength={MIN_PASSWORD} labels={passwordLabels} />
+                  </Field>
+                  <Field label={a.role} required>
+                    <Select name="role_id" required defaultValue="">
+                      <option value="" disabled>
+                        —
+                      </option>
+                      {(roles ?? []).map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.code} · {roleName(r)}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  {scopeFields}
+                  <SheetFooter>
+                    <SubmitButton>{a.addUser}</SubmitButton>
+                  </SheetFooter>
+                </form>
+              ) : (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+                  {a.loginsOff}
+                </p>
+              )}
+            </Sheet>
             <Sheet
               title={a.newRole}
               description={a.newRoleHint}
@@ -230,6 +309,8 @@ export default async function AccessPage({ params }: { params: Promise<{ locale:
                   <TH>{a.member}</TH>
                   <TH>{t.common.status}</TH>
                   <TH>{a.currentRoles}</TH>
+                  <TH>{a.lastSignIn}</TH>
+                  <TH />
                 </tr>
               </THead>
               <tbody>
@@ -239,7 +320,7 @@ export default async function AccessPage({ params }: { params: Promise<{ locale:
                     <TR key={m.id}>
                       <TD>
                         <p className="font-medium">{memberName(m)}</p>
-                        <p className="font-mono text-[10px] text-faint">{m.user_id}</p>
+                        <p className="text-2xs text-muted">{login.get(m.id)?.email ?? m.user_id}</p>
                       </TD>
                       <TD>
                         <Badge tone={m.status === "ACTIVE" ? "success" : "neutral"}>
@@ -265,6 +346,59 @@ export default async function AccessPage({ params }: { params: Promise<{ locale:
                           </div>
                         ) : (
                           <span className="text-2xs text-faint">{a.noRoles}</span>
+                        )}
+                      </TD>
+                      <TD className="text-2xs">
+                        {login.get(m.id)?.must_change_password ? (
+                          <Badge tone="warning">{a.mustChange}</Badge>
+                        ) : login.get(m.id)?.last_sign_in_at ? (
+                          formatDate(locale, login.get(m.id)!.last_sign_in_at!)
+                        ) : (
+                          <span className="text-faint">{a.neverSignedIn}</span>
+                        )}
+                      </TD>
+                      <TD className="text-right">
+                        {m.user_id === user.id ? null : (
+                          <div className="flex justify-end gap-1">
+                            {loginsOn ? (
+                              <Sheet
+                                title={`${a.resetPassword} · ${memberName(m)}`}
+                                description={a.resetPasswordHint}
+                                triggerLabel={a.resetPassword}
+                                triggerVariant="ghost"
+                                triggerSize="xs"
+                              >
+                                <form action={resetMemberPassword} className="space-y-3">
+                                  <Hidden values={{ locale, user_id: m.user_id }} />
+                                  <Field
+                                    label={a.firstPassword}
+                                    hint={a.firstPasswordHint.replace("{n}", String(MIN_PASSWORD))}
+                                    required
+                                  >
+                                    <PasswordField
+                                      minLength={MIN_PASSWORD}
+                                      labels={passwordLabels}
+                                    />
+                                  </Field>
+                                  <SheetFooter>
+                                    <SubmitButton>{a.resetPassword}</SubmitButton>
+                                  </SheetFooter>
+                                </form>
+                              </Sheet>
+                            ) : null}
+                            <form action={setMemberStatus}>
+                              <Hidden
+                                values={{
+                                  locale,
+                                  membership_id: m.id,
+                                  status: m.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE",
+                                }}
+                              />
+                              <SubmitButton variant="ghost" size="xs">
+                                {m.status === "ACTIVE" ? a.suspend : a.activate}
+                              </SubmitButton>
+                            </form>
+                          </div>
                         )}
                       </TD>
                     </TR>
