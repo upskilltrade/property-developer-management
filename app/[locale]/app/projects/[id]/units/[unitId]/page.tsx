@@ -14,6 +14,8 @@ import { Sheet, SheetFooter } from "@/components/ui/sheet";
 import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { cn } from "@/components/ui/cn";
+import { PasswordField } from "@/components/domain/password-field";
+import { canManageLogins, MIN_PASSWORD } from "@/lib/supabase/admin";
 import { Unit360Panel, type Unit360Data } from "@/components/domain/unit-360";
 import { timelineColumns, type TimelineEvent } from "@/lib/control";
 import {
@@ -45,6 +47,7 @@ export default async function Unit360({
     .eq("project_id", id)
     .maybeSingle();
   if (!u) notFound();
+  const loginsOn = canManageLogins();
   // With a schedule, construction progress is derived from verified activities, not typed in.
   const [
     { count: scheduleCount },
@@ -377,6 +380,22 @@ export default async function Unit360({
                                 defaultValue={customer.email ?? ""}
                               />
                             </Field>
+                            {loginsOn ? (
+                              <Field
+                                label={t.unit.firstPassword}
+                                hint={t.unit.firstPasswordHint.replace("{n}", String(MIN_PASSWORD))}
+                              >
+                                <PasswordField
+                                  minLength={MIN_PASSWORD}
+                                  required={false}
+                                  labels={{
+                                    generate: t.access.passwordGenerate,
+                                    show: t.access.passwordShow,
+                                    copy: t.access.passwordCopy,
+                                  }}
+                                />
+                              </Field>
+                            ) : null}
                             <SheetFooter>
                               <SubmitButton>{t.unit.linkAccount}</SubmitButton>
                             </SheetFooter>

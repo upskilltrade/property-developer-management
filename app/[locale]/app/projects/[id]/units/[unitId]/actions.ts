@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formLocale, num, numText, optStr, str, withFlash } from "@/lib/form";
 import { constructionStages, unitStatuses } from "@/lib/status";
+import { canManageLogins, createAdminClient, MIN_PASSWORD } from "@/lib/supabase/admin";
 
 async function context(fd: FormData) {
   const locale = formLocale(fd);
@@ -127,15 +128,48 @@ export async function saveSale(fd: FormData) {
   done(unitError, "sale");
 }
 
+/**
+ * Links the customer to a login so they can use the portal. If the email has no login yet and a
+ * first password was given, the login is created (the customer must change it on first sign-in).
+ */
 export async function linkCustomerAccount(fd: FormData) {
   const { supabase, back, done } = await context(fd);
   const customerId = str(fd, "customer_id");
-  const email = str(fd, "email");
+  const email = str(fd, "email").toLowerCase();
+  const password = String(fd.get("password") ?? "");
   if (!customerId || !email) redirect(withFlash(back, "error", "invalid"));
-  const { error } = await supabase.rpc("link_customer_account", {
-    target_customer: customerId,
-    account_email: email,
-  });
+  const link = () =>
+    supabase.rpc("link_customer_account", { target_customer: customerId, account_email: email });
+  let { error } = await link();
+  if (error?.message.includes("No account") && password) {
+    if (!canManageLogins()) redirect(withFlash(back, "error", "loginsOff"));
+    if (password.length < MIN_PASSWORD) redirect(withFlash(back, "error", "passwordShort"));
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("full_name")
+      .eq("id", customerId)
+      .maybeSingle();
+    if (!customer) redirect(withFlash(back, "error", "permission"));
+    const admin = createAdminClient();
+    const { data, error: createError } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { display_name: customer.full_name },
+      app_metadata: { must_change_password: true },
+    });
+    if (createError || !data.user)
+      redirect(
+        withFlash(
+          back,
+          "error",
+          createError?.message.includes("Password") ? "passwordWeak" : "createUser",
+        ),
+      );
+    ({ error } = await link());
+    // Don't leave a login nobody can use if linking still fails.
+    if (error) await admin.auth.admin.deleteUser(data.user.id);
+  }
   if (error?.message.includes("No account")) redirect(withFlash(back, "error", "noAccount"));
   if (error?.message.includes("Not authorized")) redirect(withFlash(back, "error", "permission"));
   done(error, "link");
