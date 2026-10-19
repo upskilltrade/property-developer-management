@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { code, formLocale, num, optStr, str, withFlash } from "@/lib/form";
+import { code, formLocale, num, numText, optStr, str, withFlash } from "@/lib/form";
 import { unitStatuses } from "@/lib/status";
 
 async function context(fd: FormData, page: "" | "/setup") {
@@ -140,4 +140,31 @@ export async function setBankAccountActive(fd: FormData) {
   });
   if (error) redirect(withFlash(back, "error", bankError(error.message)));
   done(null, "bank_account");
+}
+
+/**
+ * Saves list prices for many houses at once (setup page). Only rows whose value changed are
+ * written; a blank clears the price. Row-level security decides who may change units.
+ */
+export async function saveUnitPrices(fd: FormData) {
+  const { supabase, back, done } = await context(fd, "/setup");
+  const changes: { id: string; price: number | null }[] = [];
+  for (const [key] of fd.entries()) {
+    if (!key.startsWith("price:")) continue;
+    const id = key.slice(6);
+    const value = numText(fd, key);
+    if (value === null) redirect(withFlash(back, "error", "number"));
+    if (value === (numText(fd, `orig:${id}`) ?? "")) continue;
+    changes.push({ id, price: value ? Number(value) : null });
+  }
+  for (const c of changes) {
+    const { data, error } = await supabase
+      .from("units")
+      .update({ list_price: c.price, updated_at: new Date().toISOString() })
+      .eq("id", c.id)
+      .eq("project_id", str(fd, "project_id"))
+      .select("id");
+    if (error || !data?.length) redirect(withFlash(back, "error", "permission"));
+  }
+  done(null, "prices");
 }

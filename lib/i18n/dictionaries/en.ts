@@ -408,6 +408,11 @@ const en: Dictionary = {
     },
   },
   project: {
+    prices: {
+      title: "List prices for all houses",
+      hint: "Edit list prices for many houses and save once. Commas are fine; blank means no price yet. The financial plan uses these for unsold houses.",
+      save: "Save prices",
+    },
     unitsTitle: "Project units",
     newUnit: "Add unit",
     newPhase: "Add phase",

@@ -2,6 +2,7 @@ import { FileUp } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { formatNumber } from "@/lib/format";
+import { label } from "@/lib/i18n/label";
 import { Panel } from "@/components/ui/panel";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -16,6 +17,7 @@ import {
   addPhase,
   addPlot,
   saveBankAccount,
+  saveUnitPrices,
   setBankAccountActive,
   setDefaultBankAccount,
 } from "../actions";
@@ -49,7 +51,11 @@ export default async function ProjectSetup({
       .select("id,code,land_area_sqm,phase_id")
       .eq("project_id", id)
       .order("code"),
-    supabase.from("units").select("id,phase_id,plot_id,house_type_id").eq("project_id", id),
+    supabase
+      .from("units")
+      .select("id,code,status,list_price,phase_id,plot_id,house_type_id,house_types(code)")
+      .eq("project_id", id)
+      .order("code"),
     supabase
       .from("cash_accounts")
       .select(
@@ -295,6 +301,49 @@ export default async function ProjectSetup({
           <EmptyState title={t.project.noHouseTypes} />
         )}
       </Panel>
+
+      {unitList.length ? (
+        <Panel title={t.project.prices.title} description={t.project.prices.hint}>
+          <form action={saveUnitPrices}>
+            {hidden}
+            <Table>
+              <THead>
+                <tr>
+                  <TH>{t.projects.fields.units}</TH>
+                  <TH>{t.project.fields.houseType}</TH>
+                  <TH>{t.common.status}</TH>
+                  <TH align="right">{t.project.fields.listPrice} (THB)</TH>
+                </tr>
+              </THead>
+              <tbody>
+                {unitList.map((u) => {
+                  const ht = Array.isArray(u.house_types) ? u.house_types[0] : u.house_types;
+                  const orig = u.list_price == null ? "" : String(Number(u.list_price));
+                  return (
+                    <TR key={u.id}>
+                      <TD className="font-mono text-2xs font-medium">{u.code}</TD>
+                      <TD className="text-2xs text-muted">{ht?.code ?? "—"}</TD>
+                      <TD className="text-2xs">{label(t.status.unit, u.status)}</TD>
+                      <TD align="right">
+                        <input type="hidden" name={`orig:${u.id}`} value={orig} />
+                        <Input
+                          name={`price:${u.id}`}
+                          inputMode="decimal"
+                          defaultValue={orig ? formatNumber(locale, Number(orig)) : ""}
+                          className="ml-auto max-w-44 text-right num"
+                        />
+                      </TD>
+                    </TR>
+                  );
+                })}
+              </tbody>
+            </Table>
+            <div className="flex justify-end border-t border-line px-4 py-3">
+              <SubmitButton>{t.project.prices.save}</SubmitButton>
+            </div>
+          </form>
+        </Panel>
+      ) : null}
     </div>
   );
 }
