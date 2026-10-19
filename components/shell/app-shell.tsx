@@ -14,6 +14,7 @@ import {
   Home,
   Landmark,
   LayoutDashboard,
+  KeyRound,
   LogOut,
   Menu,
   PieChart,
@@ -58,6 +59,7 @@ type Labels = {
   allProjects: string;
   search: string;
   signOut: string;
+  changePassword: string;
   language: string;
   overview: string;
   setup: string;
@@ -225,7 +227,13 @@ export function AppShell({
               </Link>
             ) : null}
             <LocaleSwitch locale={locale} pathname={pathname} label={labels.language} />
-            <UserMenu user={user} locale={locale} signOut={signOut} label={labels.signOut} />
+            <UserMenu
+              user={user}
+              locale={locale}
+              signOut={signOut}
+              label={labels.signOut}
+              passwordLabel={labels.changePassword}
+            />
           </div>
         </header>
         <main className="mx-auto w-full max-w-[1600px] flex-1 px-3 py-4 sm:px-5 sm:py-5">
@@ -368,11 +376,13 @@ function UserMenu({
   locale,
   signOut,
   label,
+  passwordLabel,
 }: {
   user: { name: string; email: string; roles: string[] };
   locale: string;
   signOut: (fd: FormData) => Promise<void>;
   label: string;
+  passwordLabel: string;
 }) {
   const { open, setOpen, ref } = usePopover();
   const initials = user.name.slice(0, 2).toUpperCase();
@@ -406,6 +416,13 @@ function UserMenu({
               </div>
             ) : null}
           </div>
+          <Link
+            href={`/${locale}/account/password`}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-slate-50"
+          >
+            <KeyRound className="size-3.5" />
+            {passwordLabel}
+          </Link>
           <form action={signOut}>
             <input type="hidden" name="locale" value={locale} />
             <button

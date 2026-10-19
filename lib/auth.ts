@@ -30,6 +30,8 @@ export const getSession = cache(async (locale: Locale) => {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect(`/${locale}/login`);
+  // Logins an owner created start with a password the user must replace before using the app.
+  if (user.app_metadata?.must_change_password) redirect(`/${locale}/account/password`);
 
   const [{ data: grants }, { data: profile }] = await Promise.all([
     supabase.rpc("current_access_profile"),
