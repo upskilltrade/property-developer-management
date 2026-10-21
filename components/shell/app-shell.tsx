@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Bell,
+  BookOpen,
   Building2,
   ChevronDown,
   ChevronsUpDown,
@@ -45,6 +46,7 @@ const icons = {
   customer: Home,
   bell: Bell,
   assistant: Sparkles,
+  manual: BookOpen,
 } as const;
 
 export type NavIcon = keyof typeof icons;
@@ -175,8 +177,8 @@ export function AppShell({
   );
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[232px_1fr]">
-      <aside className="sticky top-0 hidden h-dvh lg:block">{sidebar}</aside>
+    <div className="min-h-dvh lg:grid lg:grid-cols-[232px_1fr] print:block">
+      <aside className="sticky top-0 hidden h-dvh lg:block print:hidden">{sidebar}</aside>
 
       {mobileOpen ? (
         <div className="fixed inset-0 z-40 lg:hidden">
@@ -194,7 +196,7 @@ export function AppShell({
       ) : null}
 
       <div className="flex min-w-0 flex-col">
-        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-line bg-surface/95 px-3 backdrop-blur sm:px-4">
+        <header className="sticky top-0 z-30 flex print:hidden h-12 items-center gap-2 border-b border-line bg-surface/95 px-3 backdrop-blur sm:px-4">
           <button
             type="button"
             aria-label="Open menu"

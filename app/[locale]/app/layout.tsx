@@ -50,6 +50,7 @@ export default async function AppLayout({
     label: t.nav.account,
     items: [
       { label: t.nav.notifications, href: `${base}/notifications`, icon: "bell" },
+      { label: t.nav.manual, href: `${base}/help`, icon: "manual" },
       {
         label: t.nav.notificationSettings,
         href: `${base}/settings/notifications`,
