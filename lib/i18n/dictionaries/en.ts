@@ -137,6 +137,7 @@ const en: Dictionary = {
     ],
   },
   nav: {
+    manual: "User manual",
     main: "Main",
     project: "Current project",
     admin: "Administration",
@@ -2048,6 +2049,14 @@ const en: Dictionary = {
       weak: "That password is too weak or has appeared in a leak; try another",
       failed: "Couldn't change the password; please try again",
     },
+  },
+  help: {
+    title: "User manual",
+    subtitle: "How to use each part of the system; only chapters for your work are shown",
+    printAll: "Show all to print",
+    printHint: "Press Ctrl+P (or ⌘+P) to print or save as PDF",
+    empty: "No manual chapters for your role yet",
+    thaiOnly: "The manual is in Thai only",
   },
   access: {
     addUser: "Add user",
