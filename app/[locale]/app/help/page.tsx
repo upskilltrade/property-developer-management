@@ -31,6 +31,36 @@ export default async function HelpPage({
   const current = sections.find((x) => x.id === s) ?? sections[0];
   const shown = all ? sections : current ? [current] : [];
 
+  const toc = (
+    <>
+      {groups.map((g) => (
+        <div key={g.group}>
+          <p className="mb-1 px-2 text-2xs font-semibold tracking-wide text-faint uppercase">
+            {g.group}
+          </p>
+          <ul className="space-y-0.5">
+            {g.items.map((x) => (
+              <li key={x.id}>
+                <Link
+                  href={`${base}?s=${x.id}`}
+                  className={cn(
+                    "block rounded-md px-2 py-1.5 text-[13px] hover:bg-subtle",
+                    !all && x.id === current?.id
+                      ? "bg-brand/10 font-medium text-brand"
+                      : "text-ink-2",
+                  )}
+                >
+                  {x.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      {locale !== "th" ? <p className="px-2 text-2xs text-muted">{h.thaiOnly}</p> : null}
+    </>
+  );
+
   return (
     <>
       <PageHeader
@@ -38,7 +68,7 @@ export default async function HelpPage({
         subtitle={h.subtitle}
         crumbs={[{ label: t.nav.dashboard, href: `/${locale}/app` }, { label: h.title }]}
         actions={
-          <Link href={`${base}?all=1`} className={buttonClass("secondary")}>
+          <Link href={`${base}?all=1`} className={cn(buttonClass("secondary"), "print:hidden")}>
             <Printer />
             {h.printAll}
           </Link>
@@ -46,36 +76,19 @@ export default async function HelpPage({
       />
       {sections.length ? (
         <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
-          <nav className="space-y-4 print:hidden lg:sticky lg:top-4 lg:self-start">
-            {groups.map((g) => (
-              <div key={g.group}>
-                <p className="mb-1 px-2 text-2xs font-semibold tracking-wide text-faint uppercase">
-                  {g.group}
-                </p>
-                <ul className="space-y-0.5">
-                  {g.items.map((x) => (
-                    <li key={x.id}>
-                      <Link
-                        href={`${base}?s=${x.id}`}
-                        className={cn(
-                          "block rounded-md px-2 py-1.5 text-[13px] hover:bg-subtle",
-                          !all && x.id === current?.id
-                            ? "bg-brand/10 font-medium text-brand"
-                            : "text-ink-2",
-                        )}
-                      >
-                        {x.title}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-            {locale !== "th" ? <p className="px-2 text-2xs text-muted">{h.thaiOnly}</p> : null}
-          </nav>
+          <div className="print:hidden">
+            <details className="rounded-md border border-line bg-surface lg:hidden">
+              <summary className="cursor-pointer px-3 py-2 text-[13px] font-medium">
+                {h.contents}
+                {!all && current ? <span className="text-muted"> · {current.title}</span> : null}
+              </summary>
+              <nav className="space-y-4 border-t border-line px-1 py-3">{toc}</nav>
+            </details>
+            <nav className="hidden space-y-4 lg:sticky lg:top-4 lg:block">{toc}</nav>
+          </div>
           <div className="min-w-0 space-y-4">
             {shown.map((x) => (
-              <Panel key={x.id} title={x.title} description={x.group} className="break-inside-avoid-page">
+              <Panel key={x.id} title={x.title} description={x.group}>
                 <article className="px-5 py-4">
                   <ManualMarkdown source={x.body} />
                 </article>

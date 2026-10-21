@@ -39,16 +39,23 @@ export function ManualMarkdown({ source }: { source: string }) {
       i++;
     } else if (t.startsWith("## ") || t.startsWith("# ")) {
       out.push(
-        <h3 key={k()} className="mt-7 mb-2 border-b border-line pb-1 text-[15px] font-semibold text-ink first:mt-0">
+        <h3
+          key={k()}
+          className="mt-7 mb-2 border-b border-line pb-1 text-[15px] font-semibold text-ink first:mt-0"
+        >
           {inline(t.replace(/^#+\s/, ""), `h${n}`)}
         </h3>,
       );
       i++;
     } else if (t.startsWith(">")) {
       const items: string[] = [];
-      while (i < lines.length && lines[i].trim().startsWith(">")) items.push(lines[i++].trim().replace(/^>\s?/, ""));
+      while (i < lines.length && lines[i].trim().startsWith(">"))
+        items.push(lines[i++].trim().replace(/^>\s?/, ""));
       out.push(
-        <div key={k()} className="my-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+        <div
+          key={k()}
+          className="my-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900"
+        >
           {items.map((x, j) => (
             <p key={j}>{inline(x, `q${n}-${j}`)}</p>
           ))}
@@ -66,7 +73,8 @@ export function ManualMarkdown({ source }: { source: string }) {
       );
     } else if (/^\d+\. /.test(t)) {
       const items: string[] = [];
-      while (i < lines.length && /^\s*\d+\. /.test(lines[i])) items.push(lines[i++].trim().replace(/^\d+\.\s/, ""));
+      while (i < lines.length && /^\s*\d+\. /.test(lines[i]))
+        items.push(lines[i++].trim().replace(/^\d+\.\s/, ""));
       out.push(
         <ol key={k()} className="my-2 list-decimal space-y-1 pl-5 text-[13px] text-ink-2">
           {items.map((x, j) => (
@@ -77,7 +85,11 @@ export function ManualMarkdown({ source }: { source: string }) {
     } else if (t.startsWith("|")) {
       const rows: string[][] = [];
       while (i < lines.length && lines[i].trim().startsWith("|")) {
-        const cells = lines[i++].trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+        const cells = lines[i++]
+          .trim()
+          .replace(/^\||\|$/g, "")
+          .split("|")
+          .map((c) => c.trim());
         if (!cells.every((c) => /^:?-{2,}:?$/.test(c))) rows.push(cells);
       }
       const [head, ...body] = rows;
@@ -87,7 +99,10 @@ export function ManualMarkdown({ source }: { source: string }) {
             <thead>
               <tr>
                 {head?.map((c, j) => (
-                  <th key={j} className="border border-line bg-subtle px-2 py-1.5 text-left font-semibold">
+                  <th
+                    key={j}
+                    className="border border-line bg-subtle px-2 py-1.5 text-left font-semibold"
+                  >
                     {inline(c, `th${n}-${j}`)}
                   </th>
                 ))}

@@ -2054,6 +2054,7 @@ const en: Dictionary = {
     title: "User manual",
     subtitle: "How to use each part of the system; only chapters for your work are shown",
     printAll: "Show all to print",
+    contents: "Contents",
     printHint: "Press Ctrl+P (or ⌘+P) to print or save as PDF",
     empty: "No manual chapters for your role yet",
     thaiOnly: "The manual is in Thai only",
