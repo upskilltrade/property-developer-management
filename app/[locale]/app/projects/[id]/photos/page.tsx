@@ -8,6 +8,8 @@ import { Panel } from "@/components/ui/panel";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/field";
 import { PhotoThumb } from "@/components/domain/photo-thumb";
+import { VoidPhotoForm } from "@/components/domain/void-photo-form";
+import { voidPhoto } from "../schedule/actions";
 
 export const metadata: Metadata = { title: "Site photos" };
 
@@ -59,10 +61,15 @@ export default async function PhotoLog({
   if (q.from) query = query.gte("uploaded_at", q.from);
   if (q.to) query = query.lte("uploaded_at", `${q.to}T23:59:59`);
 
-  const [{ data: rows }, { data: units }] = await Promise.all([
+  const [{ data: rows }, { data: units }, { data: canApprove }] = await Promise.all([
     query,
     supabase.from("units").select("id,code").eq("project_id", id).order("code"),
+    supabase.rpc("can_schedule", { target_project: id, target_action: "APPROVE" }),
   ]);
+  const filters = new URLSearchParams(
+    (["unit", "stage", "pub", "from", "to"] as const).flatMap((k) => (q[k] ? [[k, q[k]]] : [])),
+  ).toString();
+  const back = `/${locale}/app/projects/${id}/photos${filters ? `?${filters}` : ""}`;
   const photos = (rows ?? []) as unknown as Row[];
   const paths = photos.flatMap(
     (p) => [p.storage_path, p.thumbnail_path].filter(Boolean) as string[],
@@ -139,16 +146,28 @@ export default async function PhotoLog({
               </h3>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-8">
                 {list.map((p) => (
-                  <PhotoThumb
-                    key={p.id}
-                    full={url.get(p.storage_path) ?? ""}
-                    thumb={
-                      url.get(p.thumbnail_path ?? p.storage_path) ?? url.get(p.storage_path) ?? ""
-                    }
-                    caption={p.caption ?? (p.activity ? activityName(p.activity, locale) : null)}
-                    meta={p.unit_id ? unitCode.get(p.unit_id) : s.projectWorks}
-                    published={p.publication_status === "PUBLISHED"}
-                  />
+                  <div key={p.id} className="min-w-0 space-y-1">
+                    <PhotoThumb
+                      full={url.get(p.storage_path) ?? ""}
+                      thumb={
+                        url.get(p.thumbnail_path ?? p.storage_path) ?? url.get(p.storage_path) ?? ""
+                      }
+                      caption={p.caption ?? (p.activity ? activityName(p.activity, locale) : null)}
+                      meta={p.unit_id ? unitCode.get(p.unit_id) : s.projectWorks}
+                      published={p.publication_status === "PUBLISHED"}
+                    />
+                    {canApprove ? (
+                      <VoidPhotoForm
+                        action={voidPhoto}
+                        hidden={{ locale, project_id: id, photo_id: p.id, return_to: back }}
+                        labels={{
+                          voidPhoto: s.voidPhoto,
+                          voidReason: s.voidReason,
+                          hint: s.voidHint,
+                        }}
+                      />
+                    ) : null}
+                  </div>
                 ))}
               </div>
             </section>

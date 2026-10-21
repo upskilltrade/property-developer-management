@@ -161,3 +161,29 @@ export async function updateService(fd: FormData) {
   });
   finish(error, "service");
 }
+
+/** Staff log a repair on a handed-over home for the homeowner (e.g. reported by phone or LINE). */
+export async function raiseService(fd: FormData) {
+  const { supabase, finish } = await ctx(fd);
+  const unit = str(fd, "unit_id");
+  const warranty = str(fd, "warranty_id");
+  if (warranty) {
+    const { data } = await supabase
+      .from("unit_warranties")
+      .select("id")
+      .eq("id", warranty)
+      .eq("unit_id", unit)
+      .maybeSingle();
+    if (!data) finish({ message: "Invalid warranty" }, "service");
+  }
+  const { error } = await supabase.rpc("raise_service_request", {
+    target_unit: unit,
+    data: {
+      title: str(fd, "title"),
+      description: str(fd, "description"),
+      location: str(fd, "location"),
+      warranty_id: warranty,
+    },
+  });
+  finish(error, "service");
+}

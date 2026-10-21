@@ -10,6 +10,7 @@ import { SubmitButton } from "@/components/ui/submit-button";
 /**
  * Generic private-bucket upload: the file goes straight to Storage under `folder`, then the server
  * action receives only the object path (file_path) together with the other form fields.
+ * With `optional`, the form can be sent without a file (file_path is then empty).
  */
 export function StorageUploadForm({
   action,
@@ -18,6 +19,7 @@ export function StorageUploadForm({
   folder,
   accept,
   labels,
+  optional = false,
   children,
 }: {
   action: (fd: FormData) => Promise<void>;
@@ -26,6 +28,7 @@ export function StorageUploadForm({
   folder: string;
   accept: string;
   labels: { file: string; submit: string; uploadFailed: string; hint?: string };
+  optional?: boolean;
   children?: ReactNode;
 }) {
   const [path, setPath] = useState("");
@@ -56,7 +59,7 @@ export function StorageUploadForm({
       {labels.hint ? (
         <p className="rounded-md bg-subtle px-3 py-2 text-2xs text-muted">{labels.hint}</p>
       ) : null}
-      <Field label={labels.file} required>
+      <Field label={labels.file} required={!optional}>
         <label className="flex h-20 cursor-pointer items-center justify-center gap-2 rounded-md border-2 border-dashed border-line text-2xs text-muted hover:text-ink">
           {state === "uploading" ? (
             <Loader2 className="size-4 animate-spin" />
@@ -76,7 +79,9 @@ export function StorageUploadForm({
       </Field>
       {children}
       <SheetFooter>
-        <SubmitButton disabled={!path || state === "uploading"}>{labels.submit}</SubmitButton>
+        <SubmitButton disabled={(!optional && !path) || state === "uploading"}>
+          {labels.submit}
+        </SubmitButton>
       </SheetFooter>
     </form>
   );
