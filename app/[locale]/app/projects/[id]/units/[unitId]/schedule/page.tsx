@@ -30,6 +30,7 @@ import { cn } from "@/components/ui/cn";
 import { Gantt } from "@/components/domain/gantt";
 import { ReportProgressForm } from "@/components/domain/report-progress-form";
 import { PhotoThumb } from "@/components/domain/photo-thumb";
+import { VoidPhotoForm } from "@/components/domain/void-photo-form";
 import { AiPhotoReview, type PhotoReviewRow } from "@/components/domain/ai-photo-review";
 import {
   applyScheduleTemplate,
@@ -38,6 +39,7 @@ import {
   reviewPhotosWithAi,
   updateForecast,
   verifyProgress,
+  voidPhoto,
 } from "../../../schedule/actions";
 
 export const metadata: Metadata = { title: "House schedule" };
@@ -602,13 +604,25 @@ export default async function UnitSchedule({
                     </h3>
                     <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                       {(photosByActivity.get(a.id) ?? []).map((p) => (
-                        <PhotoThumb
-                          key={p.id}
-                          {...photoUrl(p)}
-                          caption={p.caption}
-                          meta={date(p.taken_at ?? p.uploaded_at)}
-                          published={p.publication_status === "PUBLISHED"}
-                        />
+                        <div key={p.id} className="min-w-0 space-y-1">
+                          <PhotoThumb
+                            {...photoUrl(p)}
+                            caption={p.caption}
+                            meta={date(p.taken_at ?? p.uploaded_at)}
+                            published={p.publication_status === "PUBLISHED"}
+                          />
+                          {canApprove ? (
+                            <VoidPhotoForm
+                              action={voidPhoto}
+                              hidden={{ ...hidden, photo_id: p.id }}
+                              labels={{
+                                voidPhoto: s.voidPhoto,
+                                voidReason: s.voidReason,
+                                hint: s.voidHint,
+                              }}
+                            />
+                          ) : null}
+                        </div>
                       ))}
                     </div>
                   </section>

@@ -709,6 +709,8 @@ const en: Dictionary = {
     photoLog: "Site photo log",
     photoLogSubtitle: "Every project photo, filtered by unit, stage and publication",
     voidPhoto: "Void photo",
+    voidHint:
+      "A voided photo no longer shows in the gallery, the photo log or the customer portal. Use it for wrong or duplicate photos.",
     voidReason: "Reason",
     voided: "Voided",
     openSchedule: "Open schedule",
@@ -1348,6 +1350,12 @@ const en: Dictionary = {
     reopen: "Not fixed",
     reject: "Reject",
     reason: "Reason",
+    newRequest: "Log repair request",
+    newRequestHint:
+      "For repairs reported by phone or LINE. Only handed-over homes can be chosen; the homeowner sees it in their portal.",
+    location: "Location",
+    warrantyHint: "Pick this home's warranty; it is marked in warranty while still in its period.",
+    reopenReason: "Reason (required to reopen)",
     noRequests: "No service requests",
     noUnits: "No units yet",
     timelineReady: "Ready since",

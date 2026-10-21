@@ -524,8 +524,19 @@ export default async function UnitHandover({
                   triggerVariant="secondary"
                   triggerSize="xs"
                 >
-                  <form action={addItem} className="space-y-3">
-                    <Hidden values={ctx} />
+                  <StorageUploadForm
+                    action={addItem}
+                    hidden={ctx}
+                    bucket="handover-files"
+                    folder={`${org}/${id}/${unitId}`}
+                    accept="application/pdf,image/*"
+                    optional
+                    labels={{
+                      file: h.file,
+                      submit: h.addItem,
+                      uploadFailed: t.design.uploadFailed,
+                    }}
+                  >
                     <FormGrid>
                       <Field label={h.kind}>
                         <Select name="kind" defaultValue="KEY">
@@ -546,10 +557,7 @@ export default async function UnitHandover({
                     <Field label={h.reference}>
                       <Input name="reference" />
                     </Field>
-                    <SheetFooter>
-                      <SubmitButton>{h.addItem}</SubmitButton>
-                    </SheetFooter>
-                  </form>
+                  </StorageUploadForm>
                 </Sheet>
               ) : null
             }

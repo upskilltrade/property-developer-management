@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { KeyRound, ShieldCheck, Wrench } from "lucide-react";
+import { KeyRound, Plus, ShieldCheck, Wrench } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -18,7 +18,13 @@ import { Sheet, SheetFooter } from "@/components/ui/sheet";
 import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { assignService, saveChecklist, saveWarrantyType, updateService } from "./actions";
+import {
+  assignService,
+  raiseService,
+  saveChecklist,
+  saveWarrantyType,
+  updateService,
+} from "./actions";
 
 export const metadata: Metadata = { title: "Handover" };
 
@@ -152,15 +158,80 @@ export default async function ProjectHandover({
   }
 
   async function Service() {
-    const { data: list } = await supabase
-      .from("service_requests")
-      .select(
-        "id,sr_no,title,description,location,status,in_warranty,unit_id,partner_id,due_date,resolution,created_at",
-      )
-      .eq("project_id", id)
-      .order("created_at", { ascending: false });
+    const [{ data: list }, { data: warranties }] = await Promise.all([
+      supabase
+        .from("service_requests")
+        .select(
+          "id,sr_no,title,description,location,status,in_warranty,unit_id,partner_id,due_date,resolution,created_at",
+        )
+        .eq("project_id", id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("unit_warranties")
+        .select("id,unit_id,end_date,warranty_types(name_th,name_en)")
+        .eq("project_id", id),
+    ]);
+    const handedOver = (units ?? []).filter((u) => one(u.unit_handovers)?.status === "HANDED_OVER");
     return (
-      <Panel title={h.serviceRequests}>
+      <Panel
+        title={h.serviceRequests}
+        actions={
+          handedOver.length ? (
+            <Sheet
+              title={h.newRequest}
+              description={h.newRequestHint}
+              triggerLabel={h.newRequest}
+              triggerIcon={<Plus />}
+              triggerSize="xs"
+            >
+              <form action={raiseService} className="space-y-3">
+                <Hidden values={ctx} />
+                <Field label={h.unit} required>
+                  <Select name="unit_id" required defaultValue="">
+                    <option value="" disabled>
+                      —
+                    </option>
+                    {handedOver.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.code}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={h.title} required>
+                  <Input name="title" required />
+                </Field>
+                <Field label={h.location}>
+                  <Input name="location" />
+                </Field>
+                <Field label={h.description} required>
+                  <Textarea name="description" required />
+                </Field>
+                {warranties?.length ? (
+                  <Field label={h.warranties} hint={h.warrantyHint}>
+                    <Select name="warranty_id" defaultValue="">
+                      <option value="">—</option>
+                      {warranties.map((w) => {
+                        const type = one(w.warranty_types);
+                        return (
+                          <option key={w.id} value={w.id}>
+                            {unitCode.get(w.unit_id)} ·{" "}
+                            {locale === "th" ? type?.name_th : type?.name_en} · {h.validUntil}{" "}
+                            {formatDate(locale, w.end_date)}
+                          </option>
+                        );
+                      })}
+                    </Select>
+                  </Field>
+                ) : null}
+                <SheetFooter>
+                  <SubmitButton>{h.newRequest}</SubmitButton>
+                </SheetFooter>
+              </form>
+            </Sheet>
+          ) : null
+        }
+      >
         {list?.length ? (
           <ul className="divide-y divide-line">
             {list.map((s) => (
@@ -222,6 +293,17 @@ export default async function ProjectHandover({
                       </SubmitButton>
                     </form>
                   </div>
+                ) : s.status === "RESOLVED" ? (
+                  <form action={updateService} className="flex items-center gap-1">
+                    <Hidden values={{ ...ctx, sr_id: s.id }} />
+                    <Input name="note" placeholder={h.reopenReason} className="h-6 w-40 text-2xs" />
+                    <SubmitButton size="xs" variant="success" name="action" value="CLOSE">
+                      {h.close}
+                    </SubmitButton>
+                    <SubmitButton size="xs" variant="ghost" name="action" value="REOPEN">
+                      {h.reopen}
+                    </SubmitButton>
+                  </form>
                 ) : null}
               </li>
             ))}
