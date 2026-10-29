@@ -247,6 +247,8 @@ describe("feasibility", () => {
     const a = computeForecast(plan, lines, facts, "AGENT");
     const ga = Object.fromEntries(feasibility(plan, a, facts).groups.map((x) => [x.key, x]));
     expect(ga.SALES.amount).toBe(1_500_000); // marketing dropped, commission added
+    expect([ga.SALES.min, ga.SALES.max]).toEqual([0.08, 0.12]); // sole agent range
+    expect([g.SALES.min, g.SALES.max]).toEqual([0.05, 0.08]);
   });
 });
 
