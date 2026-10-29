@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import {
+  ClipboardCheck,
   Gift,
   Landmark,
+  Percent,
   PiggyBank,
   Settings2,
   ShieldAlert,
@@ -15,10 +17,14 @@ import { formatMoney, formatMonth, formatNumber, formatPercent } from "@/lib/for
 import {
   cashflow,
   computeForecast,
+  feasibility,
+  feasibilityTargets,
   forecastCostCategories,
   forecastRevenueCategories,
+  type CheckStatus,
   type ComputedLine,
   type ForecastPlan,
+  type GroupStatus,
 } from "@/lib/forecast";
 import { loadForecast } from "@/lib/forecast-data";
 import { Panel } from "@/components/ui/panel";
@@ -99,6 +105,17 @@ export default async function ProjectForecast({
   const agent =
     plan.sales_mode === "AGENT" ? result : computeForecast(plan, data.lines, data.facts, "AGENT");
   const cash = cashflow(plan, result);
+  const feas = feasibility(plan, result, data.facts);
+  const checkTone = {
+    OK: "success",
+    WARN: "warning",
+    MISSING: "neutral",
+  } as const satisfies Record<CheckStatus, string>;
+  const groupTone = { LOW: "info", OK: "success", HIGH: "danger" } as const satisfies Record<
+    GroupStatus,
+    string
+  >;
+  const pctText = (v: number) => formatPercent(locale, v);
   const money = (v: number | null | undefined) => (v == null ? "—" : formatMoney(locale, v));
   const share = (v: number) => (result.revenue ? formatPercent(locale, v / result.revenue) : "—");
   const totalCosts = result.costs + result.derived.reduce((a, d) => a + d.amount, 0);
@@ -248,7 +265,7 @@ export default async function ProjectForecast({
           {f.unpriced.replace("{n}", String(data.facts.unpricedUnits))}
         </p>
       ) : null}
-      <KpiStrip cols={5}>
+      <KpiStrip cols={6}>
         <Kpi
           label={f.kpi.revenue}
           value={money(result.revenue)}
@@ -260,6 +277,13 @@ export default async function ProjectForecast({
           value={money(totalCosts)}
           sub={share(totalCosts)}
           icon={<Wallet />}
+        />
+        <Kpi
+          label={f.kpi.beforeTax}
+          value={money(result.profitBeforeTax)}
+          sub={formatPercent(locale, result.marginBeforeTax)}
+          tone={result.profitBeforeTax < 0 ? "negative" : "positive"}
+          icon={<Percent />}
         />
         <Kpi
           label={f.kpi.net}
@@ -291,6 +315,81 @@ export default async function ProjectForecast({
           icon={<Landmark />}
         />
       </KpiStrip>
+
+      <Panel
+        title={f.feasibility.title}
+        description={f.feasibility.body}
+        actions={<ClipboardCheck className="size-4 text-muted" />}
+      >
+        <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          {(
+            [
+              [
+                "costMultiple",
+                (v: number) => `${formatNumber(locale, v, 2)}×`,
+                `${formatNumber(locale, feasibilityTargets.costMultiple, 2)}`,
+              ],
+              ["landShare", pctText, pctText(feasibilityTargets.landShare)],
+              ["sellableRatio", pctText, pctText(feasibilityTargets.sellableRatio)],
+              ["marginBeforeTax", pctText, pctText(feasibilityTargets.marginBeforeTax)],
+            ] as const
+          ).map(([key, show, target]) => {
+            const c = feas.checks[key];
+            return (
+              <div key={key} className="rounded-lg border border-line p-3">
+                <p className="flex items-center justify-between gap-2 text-2xs text-muted">
+                  {f.feasibility.checks[key]}
+                  <Badge tone={checkTone[c.status]}>{f.feasibility.status[c.status]}</Badge>
+                </p>
+                <p className="mt-1 text-lg font-semibold num">
+                  {c.value == null ? "—" : show(c.value)}
+                </p>
+                <p className="text-2xs text-muted">
+                  {c.value == null
+                    ? f.feasibility.missing[key]
+                    : f.feasibility.targets[key].replace("{n}", target)}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+        <p className="border-t border-line px-4 pt-3 text-[13px] font-medium">
+          {f.feasibility.groupsTitle}
+        </p>
+        <Table>
+          <THead>
+            <tr>
+              <TH>{f.feasibility.cols.group}</TH>
+              <TH align="right">{f.feasibility.cols.amount}</TH>
+              <TH align="right">{f.feasibility.cols.share}</TH>
+              <TH align="right">{f.feasibility.cols.range}</TH>
+              <TH>{f.feasibility.cols.status}</TH>
+            </tr>
+          </THead>
+          <tbody>
+            {feas.groups.map((g) => (
+              <TR key={g.key}>
+                <TD className="font-medium">{f.feasibility.groups[g.key]}</TD>
+                <TD align="right" className="num">
+                  {money(g.amount)}
+                </TD>
+                <TD
+                  align="right"
+                  className={cn("num", g.status === "HIGH" && "font-semibold text-red-700")}
+                >
+                  {pctText(g.share)}
+                </TD>
+                <TD align="right" className="text-muted num">
+                  {pctText(g.min)}–{pctText(g.max)}
+                </TD>
+                <TD>
+                  <Badge tone={groupTone[g.status]}>{f.feasibility.groupStatus[g.status]}</Badge>
+                </TD>
+              </TR>
+            ))}
+          </tbody>
+        </Table>
+      </Panel>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Panel title={f.sales.title}>
@@ -396,13 +495,15 @@ export default async function ProjectForecast({
                       ? `${rateText(plan.transfer_fee_pct)} × ${rateText(plan.developer_transfer_share_pct)}`
                       : d.key === "BUSINESS_TAX"
                         ? rateText(plan.business_tax_pct)
-                        : d.key === "LEASE_TAX"
-                          ? rateText(plan.lease_tax_pct ?? null)
-                          : d.key === "LEASE_FEE"
-                            ? rateText(plan.lease_fee_pct ?? null)
-                            : d.key === "CONSTRUCTION_TAX"
-                              ? rateText(plan.construction_tax_pct ?? null)
-                              : rateText(plan.income_tax_pct)}
+                        : d.key === "INTEREST"
+                          ? `${rateText(plan.loan_rate_pct ?? null)} ${f.perYear}`
+                          : d.key === "LEASE_TAX"
+                            ? rateText(plan.lease_tax_pct ?? null)
+                            : d.key === "LEASE_FEE"
+                              ? rateText(plan.lease_fee_pct ?? null)
+                              : d.key === "CONSTRUCTION_TAX"
+                                ? rateText(plan.construction_tax_pct ?? null)
+                                : rateText(plan.income_tax_pct)}
                 </TD>
                 <TD align="right" className="font-medium num">
                   {money(d.amount)}

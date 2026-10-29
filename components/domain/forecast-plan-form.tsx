@@ -45,6 +45,13 @@ type Labels = {
   leaseTax: string;
   leaseFee: string;
   constructionTax: string;
+  loanTitle: string;
+  loanHint: string;
+  loanRate: string;
+  equity: string;
+  equityHint: string;
+  landArea: string;
+  landAreaHint: string;
   notes: string;
   save: string;
 };
@@ -163,6 +170,33 @@ export function ForecastPlanForm({
             </Field>
           ))}
         </FormGrid>
+      </div>
+      <div className="space-y-2 rounded-md border border-line px-3 py-2">
+        <p className="text-[13px] font-medium">{labels.loanTitle}</p>
+        <p className="text-2xs text-muted">{labels.loanHint}</p>
+        <FormGrid>
+          <Field label={labels.loanRate}>
+            <Input
+              name="loan_rate_pct"
+              inputMode="decimal"
+              defaultValue={v(plan.loan_rate_pct ?? null)}
+            />
+          </Field>
+          <Field label={labels.equity} hint={labels.equityHint}>
+            <Input
+              name="equity_amount"
+              inputMode="decimal"
+              defaultValue={v(plan.equity_amount ?? null)}
+            />
+          </Field>
+        </FormGrid>
+        <Field label={labels.landArea} hint={labels.landAreaHint}>
+          <Input
+            name="land_area_sqm"
+            inputMode="decimal"
+            defaultValue={v(plan.land_area_sqm ?? null)}
+          />
+        </Field>
       </div>
       <Field label={labels.notes}>
         <Textarea name="notes" defaultValue={plan.notes ?? ""} />

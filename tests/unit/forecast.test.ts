@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   cashflow,
   computeForecast,
+  feasibility,
   type ForecastFacts,
   type ForecastLine,
   type ForecastPlan,
@@ -167,6 +168,85 @@ describe("cashflow", () => {
     expect(c.series[0].outflow).toBeGreaterThan(20_000_000);
     expect(c.lowest.month).toBe("2026-11");
     expect(c.series.at(-1)!.cumulative).toBeCloseTo(r.netProfit, 0);
+  });
+});
+
+describe("interest from the monthly shortfall", () => {
+  const loan = { ...plan, loan_rate_pct: 12 };
+
+  it("charges no interest without a loan rate", () => {
+    const r = computeForecast(plan, lines, facts);
+    expect(r.derived.some((d) => d.key === "INTEREST")).toBe(false);
+    expect(r.interestByMonth.every((v) => v === 0)).toBe(true);
+  });
+
+  it("charges 1% a month on the shortfall and lowers profit by the same amount", () => {
+    const base = computeForecast(plan, lines, facts);
+    const r = computeForecast(loan, lines, facts);
+    const total = r.derived.find((d) => d.key === "INTEREST")!.amount;
+    expect(total).toBeGreaterThan(0);
+    expect(r.profitBeforeTax).toBeCloseTo(base.profitBeforeTax - total, 1);
+    // Month 1: land up front plus a month of spread costs, less a month of sales.
+    const c0 = cashflow(plan, base).series[0].cumulative;
+    expect(r.interestByMonth[0]).toBeCloseTo(-c0 * 0.01, 1);
+  });
+
+  it("own equity covers the first part of the shortfall", () => {
+    const all = computeForecast(loan, lines, facts).interestByMonth[0];
+    const part = computeForecast({ ...loan, equity_amount: 10_000_000 }, lines, facts)
+      .interestByMonth[0];
+    expect(part).toBeCloseTo(all - 100_000, 1);
+    const none = computeForecast({ ...loan, equity_amount: 100_000_000 }, lines, facts);
+    expect(none.derived.find((d) => d.key === "INTEREST")!.amount).toBe(0);
+  });
+
+  it("a slower sell-out costs more interest", () => {
+    const at = (m: number) =>
+      computeForecast({ ...loan, sell_out_months: m }, lines, facts).derived.find(
+        (d) => d.key === "INTEREST",
+      )!.amount;
+    expect(at(20)).toBeGreaterThan(at(10));
+  });
+
+  it("the cash flow carries the same interest and still ends at net profit", () => {
+    const r = computeForecast(loan, lines, facts);
+    const c = cashflow(loan, r);
+    expect(c.series.at(-1)!.cumulative).toBeCloseTo(r.netProfit, 0);
+  });
+});
+
+describe("feasibility", () => {
+  it("cost multiple, land share and before-tax margin from the plan", () => {
+    const r = computeForecast(plan, lines, facts);
+    const x = feasibility(plan, r, facts);
+    const cost = 35_500_000 + 500_000 + 1_650_000;
+    expect(x.checks.costMultiple.value).toBeCloseTo(50_000_000 / cost, 6);
+    expect(x.checks.costMultiple.status).toBe("OK");
+    expect(x.checks.landShare.value).toBeCloseTo(0.4, 6);
+    expect(x.checks.landShare.status).toBe("WARN");
+    expect(x.checks.marginBeforeTax.value).toBeCloseTo(r.profitBeforeTax / 50_000_000, 6);
+  });
+
+  it("sellable ratio needs the project land and the units' plot land", () => {
+    const r = computeForecast(plan, lines, facts);
+    expect(feasibility(plan, r, facts).checks.sellableRatio.status).toBe("MISSING");
+    const x = feasibility({ ...plan, land_area_sqm: 8_000 }, r, { ...facts, totalPlotArea: 4_400 });
+    expect(x.checks.sellableRatio.value).toBeCloseTo(0.55, 6);
+    expect(x.checks.sellableRatio.status).toBe("WARN");
+  });
+
+  it("groups costs and flags shares outside the usual range", () => {
+    const r = computeForecast(plan, lines, facts);
+    const g = Object.fromEntries(feasibility(plan, r, facts).groups.map((x) => [x.key, x]));
+    expect(g.LAND.amount).toBe(20_000_000);
+    expect(g.LAND.status).toBe("HIGH");
+    expect(g.CONSTRUCTION.share).toBeCloseTo(0.27, 6);
+    expect(g.CONSTRUCTION.status).toBe("LOW");
+    expect(g.TRANSFER_TAX.amount).toBe(2_150_000);
+    expect(g.SALES.amount).toBe(1_000_000);
+    const a = computeForecast(plan, lines, facts, "AGENT");
+    const ga = Object.fromEntries(feasibility(plan, a, facts).groups.map((x) => [x.key, x]));
+    expect(ga.SALES.amount).toBe(1_500_000); // marketing dropped, commission added
   });
 });
 

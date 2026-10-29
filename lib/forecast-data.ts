@@ -32,7 +32,7 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     supabase
       .from("units")
       .select(
-        "id,status,list_price,house_types(gross_floor_area_sqm),unit_sales(status,agreed_price)",
+        "id,status,list_price,plots(land_area_sqm),house_types(gross_floor_area_sqm),unit_sales(status,agreed_price)",
       )
       .eq("project_id", projectId),
     supabase.from("payments").select("amount").eq("project_id", projectId).eq("status", "VALID"),
@@ -56,6 +56,7 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
   let unsoldListValue = 0;
   let unpricedUnits = 0;
   let totalFloorArea = 0;
+  let totalPlotArea = 0;
   for (const u of units ?? []) {
     const sale = one(u.unit_sales as One<{ status: string | null; agreed_price: number | null }>);
     const sold = soldStatuses.has(sale?.status ?? "") || soldStatuses.has(String(u.status));
@@ -68,6 +69,7 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
       if (price > 0) unsoldListValue += price;
       else unpricedUnits++;
     }
+    totalPlotArea += toNumber(one(u.plots as One<{ land_area_sqm: number | null }>)?.land_area_sqm);
     totalFloorArea += toNumber(
       one(u.house_types as One<{ gross_floor_area_sqm: number | null }>)?.gross_floor_area_sqm,
     );
@@ -89,6 +91,7 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     leaseRevenue: partTotal("LAND_LEASE"),
     constructionRevenue: partTotal("CONSTRUCTION"),
     totalFloorArea,
+    totalPlotArea,
     actualByCategory,
   };
   const num = (v: unknown) => (v == null ? null : toNumber(v));
@@ -107,6 +110,9 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
           lease_tax_pct: num(plan.lease_tax_pct),
           lease_fee_pct: num(plan.lease_fee_pct),
           construction_tax_pct: num(plan.construction_tax_pct),
+          land_area_sqm: num(plan.land_area_sqm),
+          loan_rate_pct: num(plan.loan_rate_pct),
+          equity_amount: num(plan.equity_amount),
           notes: plan.notes,
         } as ForecastPlan)
       : null,
