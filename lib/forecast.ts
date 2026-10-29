@@ -381,6 +381,9 @@ export const feasibilityGroups = {
 >;
 export type FeasibilityGroupKey = keyof typeof feasibilityGroups;
 
+/** Sales range when a sole agent sells: their fee (usually about 10%) already covers marketing. */
+export const agentSalesRange = { min: 0.08, max: 0.12 } as const;
+
 /** Go/no-go thresholds. */
 export const feasibilityTargets = {
   /** Revenue ÷ total cost before income tax. */
@@ -404,12 +407,14 @@ export function feasibility(plan: ForecastPlan, result: ForecastResult, facts: F
   const byDerived = (keys: readonly string[]) =>
     result.derived.filter((d) => keys.includes(d.key)).reduce((a, d) => a + d.amount, 0);
 
+  const agent = result.derived.some((d) => d.key === "AGENT");
   const groups = (Object.keys(feasibilityGroups) as FeasibilityGroupKey[]).map((key) => {
     const g = feasibilityGroups[key];
+    const { min, max } = key === "SALES" && agent ? agentSalesRange : g;
     const amount = round(byCategory(g.categories) + byDerived(g.derived));
     const share = revenue ? amount / revenue : 0;
-    const status: GroupStatus = share > g.max ? "HIGH" : share < g.min ? "LOW" : "OK";
-    return { key, amount, share, min: g.min, max: g.max, status };
+    const status: GroupStatus = share > max ? "HIGH" : share < min ? "LOW" : "OK";
+    return { key, amount, share, min, max, status };
   });
 
   const costBeforeTax = round(
