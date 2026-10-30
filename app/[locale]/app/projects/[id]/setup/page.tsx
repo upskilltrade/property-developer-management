@@ -1,4 +1,4 @@
-import { FileUp } from "lucide-react";
+import { FileUp, Pencil, Trash2 } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { formatNumber } from "@/lib/format";
@@ -17,9 +17,11 @@ import {
   addHouseType,
   addPhase,
   addPlot,
+  deletePlot,
   saveBankAccount,
   savePricing,
   saveUnitPrices,
+  updatePlot,
   setBankAccountActive,
   setDefaultBankAccount,
 } from "../actions";
@@ -92,6 +94,47 @@ export default async function ProjectSetup({
   const basePrice = project?.base_unit_price == null ? null : Number(project.base_unit_price);
   const perWah = Number(project?.extra_land_price_per_wah ?? defaultExtraLandPerWah);
   const pr = t.project.prices;
+
+  type Plot = NonNullable<typeof plots>[number];
+  const plotForm = (x?: Plot) => (
+    <form action={x ? updatePlot : addPlot} className="space-y-3">
+      {hidden}
+      {x ? <input type="hidden" name="plot_id" value={x.id} /> : null}
+      <FormGrid>
+        <Field label={t.common.code} required>
+          <Input
+            name="code"
+            required
+            defaultValue={x?.code}
+            placeholder="L-01"
+            className="uppercase"
+          />
+        </Field>
+        <Field label={t.project.fields.landArea}>
+          <Input
+            name="land_area_sqm"
+            type="number"
+            min="0"
+            step="0.01"
+            defaultValue={x?.land_area_sqm ?? ""}
+          />
+        </Field>
+      </FormGrid>
+      <Field label={t.project.fields.phase}>
+        <Select name="phase_id" defaultValue={x?.phase_id ?? ""}>
+          <option value="">—</option>
+          {(phases ?? []).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.code} · {p.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <SheetFooter>
+        <SubmitButton>{t.common.save}</SubmitButton>
+      </SheetFooter>
+    </form>
+  );
 
   return (
     <div className="space-y-4">
@@ -177,30 +220,7 @@ export default async function ProjectSetup({
               triggerLabel={t.project.newPlot}
               triggerVariant="secondary"
             >
-              <form action={addPlot} className="space-y-3">
-                {hidden}
-                <FormGrid>
-                  <Field label={t.common.code} required>
-                    <Input name="code" required placeholder="L-01" className="uppercase" />
-                  </Field>
-                  <Field label={t.project.fields.landArea}>
-                    <Input name="land_area_sqm" type="number" min="0" step="0.01" />
-                  </Field>
-                </FormGrid>
-                <Field label={t.project.fields.phase}>
-                  <Select name="phase_id" defaultValue="">
-                    <option value="">—</option>
-                    {(phases ?? []).map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.code} · {p.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <SheetFooter>
-                  <SubmitButton>{t.common.save}</SubmitButton>
-                </SheetFooter>
-              </form>
+              {plotForm()}
             </Sheet>
           }
         >
@@ -212,6 +232,7 @@ export default async function ProjectSetup({
                   <TH>{t.project.fields.phase}</TH>
                   <TH align="right">{t.project.fields.landArea}</TH>
                   <TH align="right">{t.projects.fields.units}</TH>
+                  <TH />
                 </tr>
               </THead>
               <tbody>
@@ -223,6 +244,32 @@ export default async function ProjectSetup({
                       {p.land_area_sqm != null ? formatNumber(locale, p.land_area_sqm, 2) : "—"}
                     </TD>
                     <TD align="right">{formatNumber(locale, unitsWhere("plot_id", p.id))}</TD>
+                    <TD>
+                      <div className="flex items-center justify-end gap-1">
+                        <Sheet
+                          title={`${t.project.editPlot} · ${p.code}`}
+                          triggerLabel={t.project.editPlot}
+                          triggerIcon={<Pencil />}
+                          triggerVariant="ghost"
+                          triggerSize="xs"
+                        >
+                          {plotForm(p)}
+                        </Sheet>
+                        {unitsWhere("plot_id", p.id) ? null : (
+                          <form action={deletePlot}>
+                            {hidden}
+                            <input type="hidden" name="plot_id" value={p.id} />
+                            <SubmitButton
+                              size="xs"
+                              variant="ghost"
+                              aria-label={t.project.deletePlot}
+                            >
+                              <Trash2 />
+                            </SubmitButton>
+                          </form>
+                        )}
+                      </div>
+                    </TD>
                   </TR>
                 ))}
               </tbody>

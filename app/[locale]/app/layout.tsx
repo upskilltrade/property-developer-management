@@ -116,6 +116,7 @@ export default async function AppLayout({
             permission: t.flash.permission,
             errors: {
               selfVerify: t.flash.selfVerify,
+              plotHasUnits: t.flash.plotHasUnits,
               photosRequired: t.flash.photosRequired,
               hasSchedule: t.flash.hasSchedule,
               number: t.flash.number,

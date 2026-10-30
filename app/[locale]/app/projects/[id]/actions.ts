@@ -52,6 +52,43 @@ export async function addPlot(fd: FormData) {
   done(error, "plot");
 }
 
+export async function updatePlot(fd: FormData) {
+  const { projectId, supabase, back, done } = await context(fd, "/setup");
+  const plotCode = code(fd, "code");
+  if (!plotCode) redirect(withFlash(back, "error", "invalid"));
+  const { data, error } = await supabase
+    .from("plots")
+    .update({
+      phase_id: optStr(fd, "phase_id"),
+      code: plotCode,
+      land_area_sqm: num(fd, "land_area_sqm"),
+    })
+    .eq("id", str(fd, "plot_id"))
+    .eq("project_id", projectId)
+    .select("id");
+  if (!error && !data?.length) redirect(withFlash(back, "error", "permission"));
+  done(error, "plot");
+}
+
+/** Deletes a plot that no unit sits on. */
+export async function deletePlot(fd: FormData) {
+  const { projectId, supabase, back, done } = await context(fd, "/setup");
+  const plotId = str(fd, "plot_id");
+  const { count } = await supabase
+    .from("units")
+    .select("id", { count: "exact", head: true })
+    .eq("plot_id", plotId);
+  if (count) redirect(withFlash(back, "error", "plotHasUnits"));
+  const { data, error } = await supabase
+    .from("plots")
+    .delete()
+    .eq("id", plotId)
+    .eq("project_id", projectId)
+    .select("id");
+  if (!error && !data?.length) redirect(withFlash(back, "error", "permission"));
+  done(error, "plot");
+}
+
 export async function addHouseType(fd: FormData) {
   const { projectId, supabase, back, done } = await context(fd, "/setup");
   const { data: project } = await supabase
