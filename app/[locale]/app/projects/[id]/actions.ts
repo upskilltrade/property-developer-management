@@ -25,6 +25,27 @@ async function context(fd: FormData, page: "" | "/setup") {
   return { locale, projectId, supabase, back, done };
 }
 
+type Client = Awaited<ReturnType<typeof createClient>>;
+
+/** The phase a plot sits in; a house on a plot always takes the plot's phase. */
+async function plotPhase(supabase: Client, plotId: string | null) {
+  if (!plotId) return null;
+  const { data } = await supabase.from("plots").select("phase_id").eq("id", plotId).single();
+  return (data?.phase_id as string | null) ?? null;
+}
+
+/** Deletes one row; the RLS policy only lets a manager delete a row nothing uses. */
+async function deleteUnused(
+  supabase: Client,
+  table: "phases" | "house_types",
+  id: string,
+  back: string,
+  inUse: "phaseInUse" | "houseTypeInUse",
+) {
+  const { data, error } = await supabase.from(table).delete().eq("id", id).select("id");
+  if (error || !data?.length) redirect(withFlash(back, "error", inUse));
+}
+
 export async function addPhase(fd: FormData) {
   const { projectId, supabase, back, done } = await context(fd, "/setup");
   const phaseCode = code(fd, "code");
@@ -39,6 +60,41 @@ export async function addPhase(fd: FormData) {
   done(error, "phase");
 }
 
+export async function updatePhase(fd: FormData) {
+  const { projectId, supabase, back, done } = await context(fd, "/setup");
+  const phaseCode = code(fd, "code");
+  const name = str(fd, "name");
+  if (!phaseCode || !name) redirect(withFlash(back, "error", "invalid"));
+  const { data, error } = await supabase
+    .from("phases")
+    .update({ code: phaseCode, name, sequence_no: num(fd, "sequence_no") ?? 1 })
+    .eq("id", str(fd, "phase_id"))
+    .eq("project_id", projectId)
+    .select("id");
+  if (!error && !data?.length) redirect(withFlash(back, "error", "permission"));
+  done(error, "phase");
+}
+
+/** Deletes a phase that has no plots or houses. */
+export async function deletePhase(fd: FormData) {
+  const { projectId, supabase, back, done } = await context(fd, "/setup");
+  const phaseId = str(fd, "phase_id");
+  const [{ count: plotCount }, { count: unitCount }] = await Promise.all([
+    supabase.from("plots").select("id", { count: "exact", head: true }).eq("phase_id", phaseId),
+    supabase.from("units").select("id", { count: "exact", head: true }).eq("phase_id", phaseId),
+  ]);
+  if (plotCount || unitCount) redirect(withFlash(back, "error", "phaseInUse"));
+  const { data: phase } = await supabase
+    .from("phases")
+    .select("id")
+    .eq("id", phaseId)
+    .eq("project_id", projectId)
+    .single();
+  if (!phase) redirect(withFlash(back, "error", "permission"));
+  await deleteUnused(supabase, "phases", phaseId, back, "phaseInUse");
+  done(null, "phase");
+}
+
 export async function addPlot(fd: FormData) {
   const { projectId, supabase, back, done } = await context(fd, "/setup");
   const plotCode = code(fd, "code");
@@ -49,6 +105,51 @@ export async function addPlot(fd: FormData) {
     code: plotCode,
     land_area_sqm: num(fd, "land_area_sqm"),
   });
+  done(error, "plot");
+}
+
+export async function updatePlot(fd: FormData) {
+  const { projectId, supabase, back, done } = await context(fd, "/setup");
+  const plotCode = code(fd, "code");
+  if (!plotCode) redirect(withFlash(back, "error", "invalid"));
+  const { data, error } = await supabase
+    .from("plots")
+    .update({
+      phase_id: optStr(fd, "phase_id"),
+      code: plotCode,
+      land_area_sqm: num(fd, "land_area_sqm"),
+    })
+    .eq("id", str(fd, "plot_id"))
+    .eq("project_id", projectId)
+    .select("id");
+  if (!error && !data?.length) redirect(withFlash(back, "error", "permission"));
+  // Houses on the plot belong to the plot's phase.
+  const { error: unitsError } = error
+    ? { error }
+    : await supabase
+        .from("units")
+        .update({ phase_id: optStr(fd, "phase_id"), updated_at: new Date().toISOString() })
+        .eq("plot_id", str(fd, "plot_id"))
+        .eq("project_id", projectId);
+  done(unitsError, "plot");
+}
+
+/** Deletes a plot that no unit sits on. */
+export async function deletePlot(fd: FormData) {
+  const { projectId, supabase, back, done } = await context(fd, "/setup");
+  const plotId = str(fd, "plot_id");
+  const { count } = await supabase
+    .from("units")
+    .select("id", { count: "exact", head: true })
+    .eq("plot_id", plotId);
+  if (count) redirect(withFlash(back, "error", "plotHasUnits"));
+  const { data, error } = await supabase
+    .from("plots")
+    .delete()
+    .eq("id", plotId)
+    .eq("project_id", projectId)
+    .select("id");
+  if (!error && !data?.length) redirect(withFlash(back, "error", "permission"));
   done(error, "plot");
 }
 
@@ -73,15 +174,73 @@ export async function addHouseType(fd: FormData) {
   done(error, "house_type");
 }
 
+export async function updateHouseType(fd: FormData) {
+  const { supabase, back, done } = await context(fd, "/setup");
+  const typeCode = code(fd, "code");
+  const name = str(fd, "name");
+  if (!typeCode || !name) redirect(withFlash(back, "error", "invalid"));
+  const { data, error } = await supabase
+    .from("house_types")
+    .update({
+      code: typeCode,
+      name,
+      bedrooms: num(fd, "bedrooms") ?? 0,
+      bathrooms: num(fd, "bathrooms") ?? 0,
+      gross_floor_area_sqm: num(fd, "gross_floor_area_sqm"),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", str(fd, "house_type_id"))
+    .select("id");
+  if (!error && !data?.length) redirect(withFlash(back, "error", "permission"));
+  done(error, "house_type");
+}
+
+/** Deletes a house type no house, schedule template or design package uses. */
+export async function deleteHouseType(fd: FormData) {
+  const { supabase, back, done } = await context(fd, "/setup");
+  const typeId = str(fd, "house_type_id");
+  const { count } = await supabase
+    .from("units")
+    .select("id", { count: "exact", head: true })
+    .eq("house_type_id", typeId);
+  if (count) redirect(withFlash(back, "error", "houseTypeInUse"));
+  await deleteUnused(supabase, "house_types", typeId, back, "houseTypeInUse");
+  done(null, "house_type");
+}
+
+/** Edits a house's code, plot and house type; its phase follows the plot. */
+export async function updateUnit(fd: FormData) {
+  const { projectId, supabase, back, done } = await context(fd, "/setup");
+  const unitCode = code(fd, "code");
+  if (!unitCode) redirect(withFlash(back, "error", "invalid"));
+  const plotId = optStr(fd, "plot_id");
+  const { data, error } = await supabase
+    .from("units")
+    .update({
+      code: unitCode,
+      name: optStr(fd, "name"),
+      plot_id: plotId,
+      phase_id: plotId ? await plotPhase(supabase, plotId) : optStr(fd, "phase_id"),
+      house_type_id: optStr(fd, "house_type_id"),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", str(fd, "unit_id"))
+    .eq("project_id", projectId)
+    .select("id");
+  if (!error && !data?.length) redirect(withFlash(back, "error", "permission"));
+  done(error, "unit");
+}
+
 export async function addUnit(fd: FormData) {
   const { projectId, supabase, back, done } = await context(fd, "");
   const unitCode = code(fd, "code");
   const status = str(fd, "status") || "AVAILABLE";
   if (!unitCode || !(unitStatuses as readonly string[]).includes(status))
     redirect(withFlash(back, "error", "invalid"));
+  const plotId = optStr(fd, "plot_id");
   const { error } = await supabase.from("units").insert({
     project_id: projectId,
-    phase_id: optStr(fd, "phase_id"),
+    phase_id: (await plotPhase(supabase, plotId)) ?? optStr(fd, "phase_id"),
     plot_id: optStr(fd, "plot_id"),
     house_type_id: optStr(fd, "house_type_id"),
     code: unitCode,

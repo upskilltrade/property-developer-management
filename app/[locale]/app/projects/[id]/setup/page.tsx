@@ -1,4 +1,5 @@
-import { FileUp } from "lucide-react";
+import Link from "next/link";
+import { FileUp, Pencil, Trash2 } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { formatNumber } from "@/lib/format";
@@ -17,9 +18,16 @@ import {
   addHouseType,
   addPhase,
   addPlot,
+  deleteHouseType,
+  deletePhase,
+  deletePlot,
   saveBankAccount,
   savePricing,
   saveUnitPrices,
+  updateHouseType,
+  updatePhase,
+  updatePlot,
+  updateUnit,
   setBankAccountActive,
   setDefaultBankAccount,
 } from "../actions";
@@ -59,7 +67,7 @@ export default async function ProjectSetup({
       .order("code"),
     supabase
       .from("units")
-      .select("id,code,status,list_price,phase_id,plot_id,house_type_id,house_types(code)")
+      .select("id,code,name,status,list_price,phase_id,plot_id,house_type_id,house_types(code)")
       .eq("project_id", id)
       .order("code"),
     supabase
@@ -93,6 +101,205 @@ export default async function ProjectSetup({
   const perWah = Number(project?.extra_land_price_per_wah ?? defaultExtraLandPerWah);
   const pr = t.project.prices;
 
+  type Plot = NonNullable<typeof plots>[number];
+  const plotForm = (x?: Plot) => (
+    <form action={x ? updatePlot : addPlot} className="space-y-3">
+      {hidden}
+      {x ? <input type="hidden" name="plot_id" value={x.id} /> : null}
+      <FormGrid>
+        <Field label={t.common.code} required>
+          <Input
+            name="code"
+            required
+            defaultValue={x?.code}
+            placeholder="L-01"
+            className="uppercase"
+          />
+        </Field>
+        <Field label={t.project.fields.landArea}>
+          <Input
+            name="land_area_sqm"
+            type="number"
+            min="0"
+            step="0.01"
+            defaultValue={x?.land_area_sqm ?? ""}
+          />
+        </Field>
+      </FormGrid>
+      <Field label={t.project.fields.phase}>
+        <Select name="phase_id" defaultValue={x?.phase_id ?? ""}>
+          <option value="">—</option>
+          {(phases ?? []).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.code} · {p.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <SheetFooter>
+        <SubmitButton>{t.common.save}</SubmitButton>
+      </SheetFooter>
+    </form>
+  );
+
+  const plotCode = new Map((plots ?? []).map((p) => [p.id, p.code]));
+  const unitsOnPlot = (plotId: string) => unitList.filter((u) => u.plot_id === plotId);
+
+  /** Edit and delete buttons for one setup row; delete shows only when nothing uses the row. */
+  const rowActions = (
+    title: string,
+    form: React.ReactNode,
+    remove?: { action: (fd: FormData) => Promise<void>; field: string; id: string; label: string },
+  ) => (
+    <div className="flex items-center justify-end gap-1">
+      <Sheet
+        title={title}
+        triggerLabel={t.common.edit}
+        triggerIcon={<Pencil />}
+        triggerVariant="ghost"
+        triggerSize="xs"
+      >
+        {form}
+      </Sheet>
+      {remove ? (
+        <form action={remove.action}>
+          {hidden}
+          <input type="hidden" name={remove.field} value={remove.id} />
+          <SubmitButton size="xs" variant="ghost" aria-label={remove.label}>
+            <Trash2 />
+          </SubmitButton>
+        </form>
+      ) : null}
+    </div>
+  );
+
+  type Phase = NonNullable<typeof phases>[number];
+  const phaseForm = (x?: Phase) => (
+    <form action={x ? updatePhase : addPhase} className="space-y-3">
+      {hidden}
+      {x ? <input type="hidden" name="phase_id" value={x.id} /> : null}
+      <FormGrid>
+        <Field label={t.common.code} required>
+          <Input
+            name="code"
+            required
+            defaultValue={x?.code}
+            placeholder="PH1"
+            className="uppercase"
+          />
+        </Field>
+        <Field label={t.project.fields.sequence}>
+          <Input
+            name="sequence_no"
+            type="number"
+            min="1"
+            defaultValue={x?.sequence_no ?? (phases?.length ?? 0) + 1}
+          />
+        </Field>
+      </FormGrid>
+      <Field label={t.common.name} required>
+        <Input name="name" required defaultValue={x?.name} />
+      </Field>
+      <SheetFooter>
+        <SubmitButton>{t.common.save}</SubmitButton>
+      </SheetFooter>
+    </form>
+  );
+
+  type HouseType = NonNullable<typeof houseTypes>[number];
+  const houseTypeForm = (x?: HouseType) => (
+    <form action={x ? updateHouseType : addHouseType} className="space-y-3">
+      {hidden}
+      {x ? <input type="hidden" name="house_type_id" value={x.id} /> : null}
+      <FormGrid>
+        <Field label={t.common.code} required>
+          <Input
+            name="code"
+            required
+            defaultValue={x?.code}
+            placeholder="TYPE-A"
+            className="uppercase"
+          />
+        </Field>
+        <Field label={t.project.fields.gfa}>
+          <Input
+            name="gross_floor_area_sqm"
+            type="number"
+            min="0"
+            step="0.01"
+            defaultValue={x?.gross_floor_area_sqm ?? ""}
+          />
+        </Field>
+      </FormGrid>
+      <Field label={t.common.name} required>
+        <Input name="name" required defaultValue={x?.name} />
+      </Field>
+      <FormGrid>
+        <Field label={t.project.fields.bedrooms}>
+          <Input name="bedrooms" type="number" min="0" defaultValue={x?.bedrooms ?? 3} />
+        </Field>
+        <Field label={t.project.fields.bathrooms}>
+          <Input name="bathrooms" type="number" min="0" defaultValue={x?.bathrooms ?? 2} />
+        </Field>
+      </FormGrid>
+      <SheetFooter>
+        <SubmitButton>{t.common.save}</SubmitButton>
+      </SheetFooter>
+    </form>
+  );
+
+  type Unit = (typeof unitList)[number];
+  const unitForm = (u: Unit) => (
+    <form action={updateUnit} className="space-y-3">
+      {hidden}
+      <input type="hidden" name="unit_id" value={u.id} />
+      <FormGrid>
+        <Field label={t.project.fields.unitCode} required>
+          <Input name="code" required defaultValue={u.code} className="uppercase" />
+        </Field>
+        <Field label={t.project.fields.unitName}>
+          <Input name="name" defaultValue={u.name ?? ""} />
+        </Field>
+      </FormGrid>
+      <FormGrid>
+        <Field label={t.project.fields.plot} hint={t.project.phaseFollowsPlot}>
+          <Select name="plot_id" defaultValue={u.plot_id ?? ""}>
+            <option value="">—</option>
+            {(plots ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.code}
+                {p.phase_id ? ` · ${phaseCode.get(p.phase_id)}` : ""}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={t.project.fields.houseType}>
+          <Select name="house_type_id" defaultValue={u.house_type_id ?? ""}>
+            <option value="">—</option>
+            {(houseTypes ?? []).map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.code} · {h.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </FormGrid>
+      <Field label={t.project.fields.phase}>
+        <Select name="phase_id" defaultValue={u.phase_id ?? ""}>
+          <option value="">—</option>
+          {(phases ?? []).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.code} · {p.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <SheetFooter>
+        <SubmitButton>{t.common.save}</SubmitButton>
+      </SheetFooter>
+    </form>
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -111,28 +318,7 @@ export default async function ProjectSetup({
               triggerLabel={t.project.newPhase}
               triggerVariant="secondary"
             >
-              <form action={addPhase} className="space-y-3">
-                {hidden}
-                <FormGrid>
-                  <Field label={t.common.code} required>
-                    <Input name="code" required placeholder="PH1" className="uppercase" />
-                  </Field>
-                  <Field label={t.project.fields.sequence}>
-                    <Input
-                      name="sequence_no"
-                      type="number"
-                      min="1"
-                      defaultValue={(phases?.length ?? 0) + 1}
-                    />
-                  </Field>
-                </FormGrid>
-                <Field label={t.common.name} required>
-                  <Input name="name" required />
-                </Field>
-                <SheetFooter>
-                  <SubmitButton>{t.common.save}</SubmitButton>
-                </SheetFooter>
-              </form>
+              {phaseForm()}
             </Sheet>
           }
         >
@@ -145,6 +331,7 @@ export default async function ProjectSetup({
                   <TH>{t.common.name}</TH>
                   <TH align="right">{t.project.plots}</TH>
                   <TH align="right">{t.projects.fields.units}</TH>
+                  <TH />
                 </tr>
               </THead>
               <tbody>
@@ -160,6 +347,21 @@ export default async function ProjectSetup({
                       )}
                     </TD>
                     <TD align="right">{formatNumber(locale, unitsWhere("phase_id", p.id))}</TD>
+                    <TD>
+                      {rowActions(
+                        `${t.common.edit} · ${p.code}`,
+                        phaseForm(p),
+                        (plots ?? []).some((x) => x.phase_id === p.id) ||
+                          unitsWhere("phase_id", p.id)
+                          ? undefined
+                          : {
+                              action: deletePhase,
+                              field: "phase_id",
+                              id: p.id,
+                              label: t.project.deletePhase,
+                            },
+                      )}
+                    </TD>
                   </TR>
                 ))}
               </tbody>
@@ -177,30 +379,7 @@ export default async function ProjectSetup({
               triggerLabel={t.project.newPlot}
               triggerVariant="secondary"
             >
-              <form action={addPlot} className="space-y-3">
-                {hidden}
-                <FormGrid>
-                  <Field label={t.common.code} required>
-                    <Input name="code" required placeholder="L-01" className="uppercase" />
-                  </Field>
-                  <Field label={t.project.fields.landArea}>
-                    <Input name="land_area_sqm" type="number" min="0" step="0.01" />
-                  </Field>
-                </FormGrid>
-                <Field label={t.project.fields.phase}>
-                  <Select name="phase_id" defaultValue="">
-                    <option value="">—</option>
-                    {(phases ?? []).map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.code} · {p.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <SheetFooter>
-                  <SubmitButton>{t.common.save}</SubmitButton>
-                </SheetFooter>
-              </form>
+              {plotForm()}
             </Sheet>
           }
         >
@@ -212,6 +391,7 @@ export default async function ProjectSetup({
                   <TH>{t.project.fields.phase}</TH>
                   <TH align="right">{t.project.fields.landArea}</TH>
                   <TH align="right">{t.projects.fields.units}</TH>
+                  <TH />
                 </tr>
               </THead>
               <tbody>
@@ -222,7 +402,33 @@ export default async function ProjectSetup({
                     <TD align="right">
                       {p.land_area_sqm != null ? formatNumber(locale, p.land_area_sqm, 2) : "—"}
                     </TD>
-                    <TD align="right">{formatNumber(locale, unitsWhere("plot_id", p.id))}</TD>
+                    <TD align="right" className="text-2xs">
+                      {unitsOnPlot(p.id).length
+                        ? unitsOnPlot(p.id).map((u) => (
+                            <Link
+                              key={u.id}
+                              href={`/${locale}/app/projects/${id}/units/${u.id}`}
+                              className="ml-1 font-mono text-brand hover:underline"
+                            >
+                              {u.code}
+                            </Link>
+                          ))
+                        : "—"}
+                    </TD>
+                    <TD>
+                      {rowActions(
+                        `${t.project.editPlot} · ${p.code}`,
+                        plotForm(p),
+                        unitsOnPlot(p.id).length
+                          ? undefined
+                          : {
+                              action: deletePlot,
+                              field: "plot_id",
+                              id: p.id,
+                              label: t.project.deletePlot,
+                            },
+                      )}
+                    </TD>
                   </TR>
                 ))}
               </tbody>
@@ -254,31 +460,7 @@ export default async function ProjectSetup({
             triggerLabel={t.project.newHouseType}
             triggerVariant="secondary"
           >
-            <form action={addHouseType} className="space-y-3">
-              {hidden}
-              <FormGrid>
-                <Field label={t.common.code} required>
-                  <Input name="code" required placeholder="TYPE-A" className="uppercase" />
-                </Field>
-                <Field label={t.project.fields.gfa}>
-                  <Input name="gross_floor_area_sqm" type="number" min="0" step="0.01" />
-                </Field>
-              </FormGrid>
-              <Field label={t.common.name} required>
-                <Input name="name" required />
-              </Field>
-              <FormGrid>
-                <Field label={t.project.fields.bedrooms}>
-                  <Input name="bedrooms" type="number" min="0" defaultValue={3} />
-                </Field>
-                <Field label={t.project.fields.bathrooms}>
-                  <Input name="bathrooms" type="number" min="0" defaultValue={2} />
-                </Field>
-              </FormGrid>
-              <SheetFooter>
-                <SubmitButton>{t.common.save}</SubmitButton>
-              </SheetFooter>
-            </form>
+            {houseTypeForm()}
           </Sheet>
         }
       >
@@ -292,6 +474,7 @@ export default async function ProjectSetup({
                 <TH align="right">{t.project.fields.bathrooms}</TH>
                 <TH align="right">{t.project.fields.gfa}</TH>
                 <TH align="right">{t.projects.fields.units}</TH>
+                <TH />
               </tr>
             </THead>
             <tbody>
@@ -307,6 +490,20 @@ export default async function ProjectSetup({
                       : "—"}
                   </TD>
                   <TD align="right">{formatNumber(locale, unitsWhere("house_type_id", h.id))}</TD>
+                  <TD>
+                    {rowActions(
+                      `${t.common.edit} · ${h.code}`,
+                      houseTypeForm(h),
+                      unitsWhere("house_type_id", h.id)
+                        ? undefined
+                        : {
+                            action: deleteHouseType,
+                            field: "house_type_id",
+                            id: h.id,
+                            label: t.project.deleteHouseType,
+                          },
+                    )}
+                  </TD>
                 </TR>
               ))}
             </tbody>
@@ -315,6 +512,60 @@ export default async function ProjectSetup({
           <EmptyState title={t.project.noHouseTypes} />
         )}
       </Panel>
+
+      {unitList.length ? (
+        <Panel title={t.project.unitsTitle} description={t.project.unitsSetupHint}>
+          <Table>
+            <THead>
+              <tr>
+                <TH>{t.project.fields.unitCode}</TH>
+                <TH>{t.project.fields.phase}</TH>
+                <TH>{t.project.fields.plot}</TH>
+                <TH align="right">{t.project.fields.landArea}</TH>
+                <TH>{t.project.fields.houseType}</TH>
+                <TH>{t.common.status}</TH>
+                <TH />
+              </tr>
+            </THead>
+            <tbody>
+              {unitList.map((u) => {
+                const ht = Array.isArray(u.house_types) ? u.house_types[0] : u.house_types;
+                const area = u.plot_id ? areaOf.get(u.plot_id) : null;
+                return (
+                  <TR key={u.id}>
+                    <TD className="font-mono text-2xs font-medium">
+                      <Link
+                        href={`/${locale}/app/projects/${id}/units/${u.id}`}
+                        className="text-brand hover:underline"
+                      >
+                        {u.code}
+                      </Link>
+                    </TD>
+                    <TD className="text-muted">{u.phase_id ? phaseCode.get(u.phase_id) : "—"}</TD>
+                    <TD className="font-mono text-2xs">
+                      {u.plot_id ? plotCode.get(u.plot_id) : "—"}
+                    </TD>
+                    <TD align="right">{area != null ? formatNumber(locale, area, 2) : "—"}</TD>
+                    <TD className="text-2xs">{ht?.code ?? "—"}</TD>
+                    <TD className="text-2xs">{label(t.status.unit, u.status)}</TD>
+                    <TD>
+                      <Sheet
+                        title={`${t.common.edit} · ${u.code}`}
+                        triggerLabel={t.common.edit}
+                        triggerIcon={<Pencil />}
+                        triggerVariant="ghost"
+                        triggerSize="xs"
+                      >
+                        {unitForm(u)}
+                      </Sheet>
+                    </TD>
+                  </TR>
+                );
+              })}
+            </tbody>
+          </Table>
+        </Panel>
+      ) : null}
 
       {unitList.length ? (
         <Panel title={t.project.prices.title} description={t.project.prices.hint}>
