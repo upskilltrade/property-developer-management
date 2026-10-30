@@ -44,3 +44,9 @@
 @utility num {
   font-variant-numeric: tabular-nums;
 }
+
+/* Leaflet: hide the hairline gaps between map tiles that Chrome draws on screens with a fractional
+   pixel ratio (most phones). Tiles blend inside the tile pane only, so colours are unchanged. */
+.leaflet-container img.leaflet-tile {
+  mix-blend-mode: plus-lighter;
+}
