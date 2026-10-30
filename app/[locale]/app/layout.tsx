@@ -182,6 +182,7 @@ export default async function AppLayout({
               coordinate: t.flash.coordinate,
               no_zones: t.flash.no_zones,
               research_empty: t.flash.research_empty,
+              locate_none: t.flash.locate_none,
               ai_not_configured: t.flash.ai_not_configured,
               ai_no_photos: t.flash.ai_no_photos,
               ai_refusal: t.flash.ai_refusal,

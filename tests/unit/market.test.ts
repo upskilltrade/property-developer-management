@@ -3,6 +3,8 @@ import {
   defaultAssumptions,
   marketByZone,
   parseLatLng,
+  placeQueries,
+  isMapsLink,
   readAssumptions,
   residualLandPerWah,
   zoneOf,
@@ -79,6 +81,26 @@ describe("parseLatLng", () => {
       lng: 99.95,
     });
   });
+  it("prefers the pin over the view centre and reads encoded links", () => {
+    expect(
+      parseLatLng(
+        "https://www.google.com/maps/place/X/@12.50,99.90,15z/data=!3m1!4b1!4m6!3m5!1s0x0:0x0!8m2!3d12.5123!4d99.9456",
+      ),
+    ).toEqual({ lat: 12.5123, lng: 99.9456 });
+    expect(parseLatLng("https://maps.google.com/maps?q=12.57%2C99.95")).toEqual({
+      lat: 12.57,
+      lng: 99.95,
+    });
+    expect(parseLatLng("https://www.google.com/maps/search/12.57,+99.95")).toEqual({
+      lat: 12.57,
+      lng: 99.95,
+    });
+  });
+  it("knows a share link needs following", () => {
+    expect(parseLatLng("https://maps.app.goo.gl/AbC123")).toBeNull();
+    expect(isMapsLink("https://maps.app.goo.gl/AbC123")).toBe(true);
+    expect(isMapsLink("https://example.com/maps")).toBe(false);
+  });
   it("rejects anything else", () => {
     expect(parseLatLng("")).toBeNull();
     expect(parseLatLng("หัวหิน")).toBeNull();
@@ -144,5 +166,15 @@ describe("readAssumptions", () => {
     expect(a.houseSqm).toBe(300);
     expect(a.priceToCost).toBe(defaultAssumptions.priceToCost);
     expect(a.plotWah).toBe(defaultAssumptions.plotWah);
+  });
+});
+
+describe("placeQueries", () => {
+  it("tries the project, then each area, then the town", () => {
+    expect(placeQueries("The Sky 126", "Nong Kae / Khao Tao, Hua Hin")).toEqual({
+      exact: ["The Sky 126, Nong Kae / Khao Tao, Hua Hin", "The Sky 126"],
+      approx: ["Nong Kae, Hua Hin", "Khao Tao, Hua Hin", "Hua Hin"],
+    });
+    expect(placeQueries("X", null)).toEqual({ exact: ["X"], approx: [] });
   });
 });
