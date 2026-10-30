@@ -2447,6 +2447,11 @@ const en: Dictionary = {
     emptyCompetitorsBody: "Add one, or run AI research on a zone on the map tab",
     emptyLand: "No land prices yet",
     emptyLandBody: "Add asking, sold or appraisal prices with a coordinate",
+    compareHint:
+      "Our sale price comes only from projects like this. The default is grade-A pool villas, like Monteva",
+    compareAll: "All",
+    notViable: "Doesn't pay",
+    comparedWith: "compared",
     assumptionsTitle: "Scheme used for the numbers",
     assumptionsHint: "Defaults come from Monteva Hua Hin; change them and recalculate",
     assumptions: {
@@ -2457,6 +2462,8 @@ const en: Dictionary = {
       sellingPct: "Selling/transfer/tax (%)",
       priceToCost: "Price ÷ cost",
       negotiationPct: "Discount off asking (%)",
+      compareType: "Compare with project type",
+      compareGrade: "Grade to compare with",
     },
     recalculate: "Recalculate",
     resetAssumptions: "Reset",

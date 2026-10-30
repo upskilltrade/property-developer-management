@@ -90,6 +90,9 @@ export type Assumptions = {
   priceToCost: number;
   /** How far below asking prices land usually changes hands. */
   negotiationPct: number;
+  /** Which competitors set our sale price: only projects like ours (type and grade). */
+  compareType: (typeof productTypes)[number] | "ALL";
+  compareGrade: (typeof competitorGrades)[number] | "ALL";
 };
 export const defaultAssumptions: Assumptions = {
   houseSqm: 220,
@@ -99,6 +102,9 @@ export const defaultAssumptions: Assumptions = {
   sellingPct: 15,
   priceToCost: 1.3,
   negotiationPct: 10,
+  // Monteva is a grade-A pool villa, so it is priced against grade-A pool villas.
+  compareType: "POOL_VILLA",
+  compareGrade: "A",
 };
 
 const num = (v: unknown) => {
@@ -108,11 +114,16 @@ const num = (v: unknown) => {
 
 /** Reads assumptions from search params, keeping the default for anything blank or out of range. */
 export function readAssumptions(q: Record<string, string | undefined>): Assumptions {
-  const pick = (key: keyof Assumptions, min: number, max: number) => {
+  type NumKey = Exclude<keyof Assumptions, "compareType" | "compareGrade">;
+  const pick = (key: NumKey, min: number, max: number) => {
     const v = num(q[key]);
     return v != null && v >= min && v <= max ? v : defaultAssumptions[key];
   };
+  const oneOf = <T extends string>(v: string | undefined, list: readonly T[], fallback: T) =>
+    v === "ALL" || (list as readonly string[]).includes(v ?? "") ? (v as T | "ALL") : fallback;
   return {
+    compareType: oneOf(q.compareType, productTypes, defaultAssumptions.compareType),
+    compareGrade: oneOf(q.compareGrade, competitorGrades, defaultAssumptions.compareGrade),
     houseSqm: pick("houseSqm", 20, 5000),
     plotWah: pick("plotWah", 10, 10000),
     buildPerSqm: pick("buildPerSqm", 1000, 500000),
@@ -256,6 +267,8 @@ export type ZoneStats = {
   /** What land in the zone really costs: sold prices, else asking less the usual discount. */
   marketLand: number | null;
   sellingCount: number;
+  /** Competitors like our product (assumptions' type and grade); they set our sale price. */
+  comparables: Competitor[];
   compPriceMedian: number | null;
   compPerSqmMedian: number | null;
   grades: Record<string, number>;
@@ -289,7 +302,12 @@ export function zoneStats(
   const marketLand =
     soldMedian ?? (askingMedian != null ? askingMedian * (1 - a.negotiationPct / 100) : null);
 
-  const priced = competitors.map(competitorPrice);
+  const comparables = competitors.filter(
+    (c) =>
+      (a.compareType === "ALL" || c.product_type === a.compareType) &&
+      (a.compareGrade === "ALL" || c.grade === a.compareGrade),
+  );
+  const priced = comparables.map(competitorPrice);
   const compPriceMedian = median(priced.map((p) => p.price ?? NaN));
   const compPerSqmMedian = median(priced.map((p) => p.perSqm ?? NaN));
   const grades: Record<string, number> = {};
@@ -297,10 +315,13 @@ export function zoneStats(
 
   const ourSalePrice = compPerSqmMedian != null ? compPerSqmMedian * a.houseSqm : null;
   const residualPerWah = ourSalePrice != null ? residualLandPerWah(ourSalePrice, a) : null;
+  // Never below zero: a negative residual means the scheme doesn't pay at these prices.
   const targetPerWah =
     residualPerWah != null && marketLand != null
       ? Math.max(0, Math.min(residualPerWah, marketLand))
-      : (residualPerWah ?? marketLand);
+      : residualPerWah != null
+        ? Math.max(0, residualPerWah)
+        : marketLand;
   const headroomPct =
     residualPerWah != null && marketLand ? (residualPerWah / marketLand - 1) * 100 : null;
   const opportunity: Opportunity =
@@ -321,6 +342,7 @@ export function zoneStats(
     appraisalMedian,
     marketLand,
     sellingCount: competitors.filter((c) => c.status === "SELLING").length,
+    comparables,
     compPriceMedian,
     compPerSqmMedian,
     grades,

@@ -49,7 +49,7 @@ const comp = (lat: number, lng: number, price: number, area: number): Competitor
   location_text: null,
   product_type: "POOL_VILLA",
   status: "SELLING",
-  grade: "B",
+  grade: "A",
   price_min: price,
   price_max: price,
   house_area_min: area,
@@ -160,12 +160,37 @@ describe("marketByZone", () => {
   });
 });
 
+describe("comparables", () => {
+  it("prices our scheme only against projects like ours, and never targets below zero", () => {
+    const cheap = {
+      ...comp(1, 1, 2_000_000, 120),
+      product_type: "HOUSE" as const,
+      grade: "C" as const,
+    };
+    const villa = comp(1, 1, 15_000_000, 220);
+    const { outside } = marketByZone([], [], [cheap, villa], defaultAssumptions);
+    expect(outside.comparables).toEqual([villa]);
+    expect(outside.compPerSqmMedian).toBeCloseTo(15_000_000 / 220);
+    const all = marketByZone([], [], [cheap], {
+      ...defaultAssumptions,
+      compareType: "ALL",
+      compareGrade: "ALL",
+    });
+    expect(all.outside.residualPerWah!).toBeLessThan(0);
+    expect(all.outside.targetPerWah).toBe(0);
+  });
+});
+
 describe("readAssumptions", () => {
   it("keeps defaults for blank or silly values", () => {
     const a = readAssumptions({ houseSqm: "300", priceToCost: "9", plotWah: "" });
     expect(a.houseSqm).toBe(300);
     expect(a.priceToCost).toBe(defaultAssumptions.priceToCost);
     expect(a.plotWah).toBe(defaultAssumptions.plotWah);
+    expect(readAssumptions({ compareType: "ALL", compareGrade: "Z" })).toMatchObject({
+      compareType: "ALL",
+      compareGrade: "A",
+    });
   });
 });
 

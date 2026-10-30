@@ -2416,6 +2416,11 @@ const th = {
     emptyCompetitorsBody: "เพิ่มเอง หรือกด AI หาข้อมูลที่โซนในหน้าแผนที่",
     emptyLand: "ยังไม่มีราคาที่ดิน",
     emptyLandBody: "เพิ่มราคาประกาศขาย ราคาซื้อขายจริง หรือราคาประเมิน พร้อมพิกัด",
+    compareHint:
+      "ราคาขายของเราอิงจากโครงการแบบนี้เท่านั้น ค่าตั้งต้นคือพูลวิลล่าเกรด A แบบ Monteva",
+    compareAll: "ทั้งหมด",
+    notViable: "ไม่คุ้ม",
+    comparedWith: "ใช้เทียบ",
     assumptionsTitle: "ตุ๊กตาที่ใช้คำนวณ",
     assumptionsHint: "ค่าตั้งต้นมาจาก Monteva หัวหิน ปรับแล้วกดคำนวณใหม่",
     assumptions: {
@@ -2426,6 +2431,8 @@ const th = {
       sellingPct: "ค่าขาย/โอน/ภาษี (%)",
       priceToCost: "ราคาขาย ÷ ต้นทุน",
       negotiationPct: "ต่อรองจากราคาประกาศ (%)",
+      compareType: "เทียบราคากับโครงการประเภท",
+      compareGrade: "เกรดที่ใช้เทียบ",
     },
     recalculate: "คำนวณใหม่",
     resetAssumptions: "กลับค่าตั้งต้น",

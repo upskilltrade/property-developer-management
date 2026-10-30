@@ -847,10 +847,17 @@ function ZoneTable({
                   {wah(s.residualPerWah)}
                 </TD>
                 <TD align="right" className="num font-semibold text-brand">
-                  {wah(s.targetPerWah)}
+                  {s.residualPerWah != null && s.residualPerWah <= 0 ? (
+                    <Badge tone="danger">{m.notViable}</Badge>
+                  ) : (
+                    wah(s.targetPerWah)
+                  )}
                 </TD>
                 <TD align="right" className="num">
                   {s.competitors.length}
+                  <div className="text-2xs text-muted">
+                    {m.comparedWith} {s.comparables.length}
+                  </div>
                   <div className="text-2xs text-muted">
                     {Object.entries(s.grades)
                       .sort()
@@ -906,7 +913,10 @@ function AssumptionsForm({
   base: string;
   view: string;
 }) {
-  const fields: { key: keyof Assumptions; step: string }[] = [
+  const fields: {
+    key: Exclude<keyof Assumptions, "compareType" | "compareGrade">;
+    step: string;
+  }[] = [
     { key: "houseSqm", step: "1" },
     { key: "plotWah", step: "1" },
     { key: "buildPerSqm", step: "100" },
@@ -925,6 +935,28 @@ function AssumptionsForm({
               <Input name={f.key} type="number" step={f.step} defaultValue={a[f.key]} />
             </Field>
           ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Field label={m.assumptions.compareType} hint={m.compareHint}>
+            <Select name="compareType" defaultValue={a.compareType}>
+              <option value="ALL">{m.compareAll}</option>
+              {productTypes.map((p) => (
+                <option key={p} value={p}>
+                  {m.productTypes[p]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={m.assumptions.compareGrade}>
+            <Select name="compareGrade" defaultValue={a.compareGrade}>
+              <option value="ALL">{m.compareAll}</option>
+              {competitorGrades.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
         <div className="flex gap-2">
           <SubmitButton size="xs">{m.recalculate}</SubmitButton>

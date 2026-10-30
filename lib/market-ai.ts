@@ -205,13 +205,14 @@ export async function analyzeMarket(stats: ZoneStats[], a: Assumptions) {
       .join(" · ");
   };
   const text = [
-    `OUR SCHEME: ${a.houseSqm} sq.m. house on ${a.plotWah} ตร.ว., build ${fmt(a.buildPerSqm)}/sq.m., roads and utilities ${fmt(a.infraPerPlot)} a plot, selling costs ${a.sellingPct}% of price, sale price must be at least ${a.priceToCost}× total cost.`,
+    `OUR SCHEME: ${a.houseSqm} sq.m. house on ${a.plotWah} ตร.ว., build ${fmt(a.buildPerSqm)}/sq.m., roads and utilities ${fmt(a.infraPerPlot)} a plot, selling costs ${a.sellingPct}% of price, sale price must be at least ${a.priceToCost}× total cost. Our sale price is set from comparable competitors only (type ${a.compareType}, grade ${a.compareGrade}); a negative "most we can pay" means the scheme does not pay at those prices.`,
     ...stats.map((s) =>
       [
         `ZONE ${s.zone?.name ?? "Outside zones"}`,
         `land prices: ${s.lands.length} (asking/sold median ${fmt(s.landMedian)}, sold median ${fmt(s.soldMedian)}, appraisal median ${fmt(s.appraisalMedian)}, market estimate ${fmt(s.marketLand)} per ตร.ว.)`,
         `competitors: ${s.competitors.length}, selling ${s.sellingCount}, median price ${fmt(s.compPriceMedian)}, median ${fmt(s.compPerSqmMedian)}/sq.m.`,
-        `if we price at the median: sale ${fmt(s.ourSalePrice)}, most we can pay ${fmt(s.residualPerWah)} per ตร.ว., headroom ${s.headroomPct == null ? "-" : `${s.headroomPct.toFixed(0)}%`}`,
+        `comparables: ${s.comparables.length}`,
+        `if we price at the comparables' median: sale ${fmt(s.ourSalePrice)}, most we can pay ${fmt(s.residualPerWah)} per ตร.ว., headroom ${s.headroomPct == null ? "-" : `${s.headroomPct.toFixed(0)}%`}`,
         ...s.competitors.map(comp),
       ].join("\n"),
     ),
