@@ -55,6 +55,8 @@ import {
   saveLandPrice,
   saveZone,
   verifyMarketRow,
+  locateCompetitors,
+  setMarketPin,
 } from "./actions";
 
 export const metadata: Metadata = { title: "Land & market" };
@@ -188,6 +190,34 @@ export default async function MarketPage({
         {m.verify}
       </SubmitButton>
     </form>
+  );
+  /** Quick box for a row with no pin: paste a share link or numbers, or look it up by name. */
+  const pinForm = (table: "land" | "competitor", id: string) => (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      <form action={setMarketPin} className="flex items-center gap-1.5">
+        <Hidden values={{ ...hidden, table, id }} />
+        <Input
+          name="coordinate"
+          required
+          placeholder={m.pinPlaceholder}
+          className="h-7 w-56 text-2xs"
+          aria-label={m.coordinate}
+        />
+        <SubmitButton size="xs" variant="secondary">
+          <MapPinned />
+          {m.pin}
+        </SubmitButton>
+      </form>
+      {table === "competitor" ? (
+        <form action={locateCompetitors}>
+          <Hidden values={{ ...hidden, id }} />
+          <SubmitButton size="xs" variant="ghost" title={m.locateHint}>
+            <Search />
+            {m.locate}
+          </SubmitButton>
+        </form>
+      ) : null}
+    </div>
   );
   const sourceLink = (url: string | null) =>
     url ? (
@@ -488,7 +518,21 @@ export default async function MarketPage({
     );
   } else if (view === "competitors") {
     body = (
-      <Panel title={m.views.competitors} description={m.competitorsHint}>
+      <Panel
+        title={m.views.competitors}
+        description={m.competitorsHint}
+        actions={
+          comps.some((c) => c.lat == null) ? (
+            <form action={locateCompetitors}>
+              <Hidden values={hidden} />
+              <SubmitButton size="xs" variant="secondary" title={m.locateHint}>
+                <Search />
+                {m.locateAll} ({comps.filter((c) => c.lat == null).length})
+              </SubmitButton>
+            </form>
+          ) : null
+        }
+      >
         {comps.length ? (
           <Table>
             <THead>
@@ -522,7 +566,16 @@ export default async function MarketPage({
                       <div className="mt-1 flex flex-wrap gap-1.5 text-2xs">
                         {c.verified ? null : unverified}
                         {sourceLink(c.source_url)}
+                        {c.notes ? (
+                          <span
+                            className="line-clamp-2 max-w-md whitespace-normal text-muted"
+                            title={c.notes}
+                          >
+                            {c.notes}
+                          </span>
+                        ) : null}
                       </div>
+                      {c.lat == null ? pinForm("competitor", c.id) : null}
                     </TD>
                     <TD className="text-2xs">{zoneName(c.lat, c.lng)}</TD>
                     <TD>
@@ -616,6 +669,7 @@ export default async function MarketPage({
                       {sourceLink(l.source_url)}
                       {l.notes ? <span className="text-muted">{l.notes}</span> : null}
                     </div>
+                    {l.lat == null ? pinForm("land", l.id) : null}
                   </TD>
                   <TD className="text-2xs">{zoneName(l.lat, l.lng)}</TD>
                   <TD>{label(m.kinds, l.kind)}</TD>

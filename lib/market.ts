@@ -124,14 +124,24 @@ export function readAssumptions(q: Record<string, string | undefined>): Assumpti
 }
 
 /**
- * A coordinate typed or pasted from Google Maps: "12.5684, 99.9577", "12.5684 99.9577",
- * a maps URL containing "@12.5684,99.9577" or "q=12.5684,99.9577". Returns null when it isn't one.
+ * A coordinate typed or pasted from Google Maps: "12.5684, 99.9577", "12.5684 99.9577", or a full
+ * maps URL carrying it ("@12.5684,99.9577", "q=12.5684,99.9577", "!3d12.5684!4d99.9577",
+ * "/search/12.5684,+99.9577"). The pin itself ("!3d…!4d…") wins over the map's view centre ("@…").
+ * Short share links (maps.app.goo.gl) carry no coordinate; they are resolved on the server.
  */
 export function parseLatLng(text: string): { lat: number; lng: number } | null {
-  const t = text.trim();
+  let t = text.trim();
   if (!t) return null;
+  try {
+    t = decodeURIComponent(t);
+  } catch {
+    // keep the text as typed
+  }
   const m =
-    t.match(/[@=](-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/) ??
+    t.match(/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/) ??
+    t.match(/[?&](?:q|query|ll|center|destination)=(-?\d{1,2}\.\d+),\s*\+?(-?\d{1,3}\.\d+)/) ??
+    t.match(/\/search\/(-?\d{1,2}\.\d+),\s*\+?(-?\d{1,3}\.\d+)/) ??
+    t.match(/@(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/) ??
     t.match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)$/);
   if (!m) return null;
   const lat = Number(m[1]);
@@ -139,6 +149,46 @@ export function parseLatLng(text: string): { lat: number; lng: number } | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   return { lat, lng };
+}
+
+/** Whether the text is a Google Maps link that may need following to find its coordinate. */
+export function isMapsLink(text: string) {
+  try {
+    const u = new URL(text.trim());
+    return (
+      u.protocol === "https:" &&
+      (mapsHosts.has(u.hostname) ||
+        (u.hostname.endsWith(".google.com") && u.pathname.startsWith("/maps")))
+    );
+  } catch {
+    return false;
+  }
+}
+export const mapsHosts = new Set([
+  "maps.app.goo.gl",
+  "goo.gl",
+  "maps.google.com",
+  "www.google.com",
+  "google.com",
+  "www.google.co.th",
+  "maps.google.co.th",
+]);
+
+/**
+ * Place names to look up for a project, most exact first: the project with its location, the
+ * project alone, then each area in a location like "Nong Kae / Khao Tao, Hua Hin", then the town.
+ */
+export function placeQueries(name: string, location: string | null) {
+  const loc = (location ?? "").trim();
+  const [areas = "", ...rest] = loc.split(",");
+  const town = rest.join(",").trim();
+  const parts = areas
+    .split("/")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const exact = [loc ? `${name}, ${loc}` : name, ...(loc ? [name] : [])];
+  const approx = [...parts.map((x) => (town ? `${x}, ${town}` : x)), ...(town ? [town] : [])];
+  return { exact, approx: [...new Set(approx)] };
 }
 
 /** Great-circle distance in metres. */

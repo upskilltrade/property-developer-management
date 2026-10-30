@@ -12,7 +12,7 @@ import {
   landPriceKinds,
   marketByZone,
   offeringOptions,
-  parseLatLng,
+  placeQueries,
   productTypes,
   readAssumptions,
   type Competitor,
@@ -20,6 +20,7 @@ import {
   type Zone,
 } from "@/lib/market";
 import { analyzeMarket, researchArea } from "@/lib/market-ai";
+import { geocode, pause, resolveCoordinate } from "@/lib/geo";
 
 const oneOf = <T extends string>(list: readonly T[], v: string, fallback: T | null = null) =>
   (list as readonly string[]).includes(v) ? (v as T) : fallback;
@@ -52,16 +53,19 @@ async function context(fd: FormData) {
   return { locale, supabase, org, back, finish, userId: user.id };
 }
 
-/** The coordinate field, or the error key when it was filled but isn't a coordinate. */
-function coordinate(fd: FormData, required: boolean) {
+/**
+ * The coordinate field (numbers, a maps URL or a share link), or the error key when it was
+ * filled but no coordinate could be found in it.
+ */
+async function coordinate(fd: FormData, required: boolean) {
   const raw = str(fd, "coordinate");
-  if (!raw) return required ? "invalid" : { lat: null, lng: null };
-  return parseLatLng(raw) ?? "invalid";
+  if (!raw) return required ? ("invalid" as const) : { lat: null, lng: null };
+  return (await resolveCoordinate(raw)) ?? ("invalid" as const);
 }
 
 export async function saveZone(fd: FormData) {
   const { supabase, org, back, finish, userId } = await context(fd);
-  const at = coordinate(fd, true);
+  const at = await coordinate(fd, true);
   const name = str(fd, "name");
   if (at === "invalid" || !name) redirect(withFlash(back, "error", "coordinate"));
   const row = {
@@ -82,7 +86,7 @@ export async function saveZone(fd: FormData) {
 
 export async function saveLandPrice(fd: FormData) {
   const { supabase, org, back, finish, userId } = await context(fd);
-  const at = coordinate(fd, false);
+  const at = await coordinate(fd, false);
   if (at === "invalid") redirect(withFlash(back, "error", "coordinate"));
   const price = positive(fd, "price_per_wah");
   const perRai = positive(fd, "price_per_rai");
@@ -110,7 +114,7 @@ export async function saveLandPrice(fd: FormData) {
 
 export async function saveCompetitor(fd: FormData) {
   const { supabase, org, back, finish, userId } = await context(fd);
-  const at = coordinate(fd, false);
+  const at = await coordinate(fd, false);
   const name = str(fd, "name");
   if (at === "invalid" || !name)
     redirect(withFlash(back, "error", at === "invalid" ? "coordinate" : "invalid"));
@@ -168,6 +172,70 @@ export async function deleteMarketRow(fd: FormData) {
   if (!table) finish({ message: "invalid" });
   const { error } = await supabase.from(table).delete().eq("id", str(fd, "id"));
   finish(error, "deleted");
+}
+
+/** Sets only the pin of a land price or competitor, from the quick coordinate box. */
+export async function setMarketPin(fd: FormData) {
+  const { supabase, back, finish } = await context(fd);
+  const at = await coordinate(fd, true);
+  if (at === "invalid") redirect(withFlash(back, "error", "coordinate"));
+  const table = str(fd, "table") === "land" ? "land_prices" : "competitor_projects";
+  const { error } = await supabase
+    .from(table)
+    .update({ lat: at.lat, lng: at.lng })
+    .eq("id", str(fd, "id"));
+  finish(error);
+}
+
+/**
+ * Pins competitors that have no coordinate by looking up their name, or failing that their area,
+ * on OpenStreetMap. An area match is marked as approximate in the notes.
+ */
+export async function locateCompetitors(fd: FormData) {
+  const { supabase, back } = await context(fd);
+  const one = str(fd, "id");
+  let query = supabase
+    .from("competitor_projects")
+    .select("id,name,location_text,notes")
+    .is("lat", null)
+    .limit(25);
+  if (one) query = query.eq("id", one);
+  const { data: rows } = await query;
+  let found = 0;
+  let approx = 0;
+  for (const r of rows ?? []) {
+    const { exact, approx: areas } = placeQueries(r.name, r.location_text);
+    let hit: { lat: number; lng: number } | null = null;
+    let rough = false;
+    for (const q of [...exact, ...areas]) {
+      const g = await geocode(q);
+      await pause(1100);
+      if (g) {
+        hit = g;
+        rough = !exact.includes(q);
+        break;
+      }
+    }
+    if (!hit) continue;
+    const note = rough
+      ? "ตำแหน่งโดยประมาณจากชื่อพื้นที่ — วางลิงก์ Google Maps เพื่อปักหมุดจริง"
+      : null;
+    const { error } = await supabase
+      .from("competitor_projects")
+      .update({
+        lat: hit.lat,
+        lng: hit.lng,
+        ...(note ? { notes: r.notes ? `${r.notes}\n${note}` : note } : {}),
+      })
+      .eq("id", r.id);
+    if (!error) {
+      found++;
+      if (rough) approx++;
+    }
+  }
+  revalidatePath(`/${formLocale(fd)}/app/market`);
+  if (!found) redirect(withFlash(back, "error", "locate_none"));
+  redirect(withFlash(back, "saved", approx ? "located_approx" : "located"));
 }
 
 /** Marks an AI-found row as checked by a person. */
