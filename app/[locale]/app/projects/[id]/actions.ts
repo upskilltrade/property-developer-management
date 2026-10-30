@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { code, formLocale, num, numText, optStr, str, withFlash } from "@/lib/form";
 import { unitStatuses } from "@/lib/status";
+import { defaultExtraLandPerWah, suggestedPrice } from "@/lib/unit-pricing";
 
 async function context(fd: FormData, page: "" | "/setup") {
   const locale = formLocale(fd);
@@ -165,6 +166,58 @@ export async function saveUnitPrices(fd: FormData) {
       .eq("project_id", str(fd, "project_id"))
       .select("id");
     if (error || !data?.length) redirect(withFlash(back, "error", "permission"));
+  }
+  done(null, "prices");
+}
+
+/**
+ * Saves the project's pricing settings (base price and extra-land charge per ตร.ว.).
+ * With apply=1 it also reprices every AVAILABLE or HOLD unit from its plot size;
+ * units already reserved or sold keep their price.
+ */
+export async function savePricing(fd: FormData) {
+  const { projectId, supabase, back, done } = await context(fd, "/setup");
+  const base = numText(fd, "base_unit_price");
+  const perWah = numText(fd, "extra_land_price_per_wah");
+  if (base === null || perWah === null) redirect(withFlash(back, "error", "number"));
+  const rate = perWah ? Number(perWah) : defaultExtraLandPerWah;
+  const { data: saved, error } = await supabase
+    .from("projects")
+    .update({
+      base_unit_price: base ? Number(base) : null,
+      extra_land_price_per_wah: rate,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", projectId)
+    .select("id");
+  if (error || !saved?.length) redirect(withFlash(back, "error", "permission"));
+  if (str(fd, "apply") !== "1") done(null, "pricing");
+  if (!base) redirect(withFlash(back, "error", "invalid"));
+
+  const [{ data: plots }, { data: units }] = await Promise.all([
+    supabase.from("plots").select("id,land_area_sqm").eq("project_id", projectId),
+    supabase.from("units").select("id,status,plot_id").eq("project_id", projectId),
+  ]);
+  const areaOf = new Map((plots ?? []).map((p) => [p.id, p.land_area_sqm as number | null]));
+  const areas = [...areaOf.values()].filter((a): a is number => a != null).map(Number);
+  const standard = areas.length ? Math.min(...areas) : null;
+  for (const u of units ?? []) {
+    if (!["AVAILABLE", "HOLD"].includes(u.status)) continue;
+    const area = u.plot_id ? areaOf.get(u.plot_id) : null;
+    const { error: e } = await supabase
+      .from("units")
+      .update({
+        list_price: suggestedPrice(
+          Number(base),
+          area == null ? null : Number(area),
+          standard,
+          rate,
+        ),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", u.id)
+      .eq("project_id", projectId);
+    if (e) redirect(withFlash(back, "error", "permission"));
   }
   done(null, "prices");
 }
