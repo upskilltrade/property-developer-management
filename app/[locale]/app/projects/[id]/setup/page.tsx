@@ -11,12 +11,14 @@ import { Field, FormGrid, Hidden, Input, Select } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { ButtonLink } from "@/components/ui/button";
 import type { BankAccount } from "@/lib/bank";
+import { defaultExtraLandPerWah, sqmPerWah, suggestedPrice } from "@/lib/unit-pricing";
 import { BankAccountsPanel } from "@/components/domain/bank-accounts-panel";
 import {
   addHouseType,
   addPhase,
   addPlot,
   saveBankAccount,
+  savePricing,
   saveUnitPrices,
   setBankAccountActive,
   setDefaultBankAccount,
@@ -40,7 +42,11 @@ export default async function ProjectSetup({
     { data: bankAccounts },
     { data: canManageBank },
   ] = await Promise.all([
-    supabase.from("projects").select("organization_id").eq("id", id).single(),
+    supabase
+      .from("projects")
+      .select("organization_id,base_unit_price,extra_land_price_per_wah")
+      .eq("id", id)
+      .single(),
     supabase
       .from("phases")
       .select("id,code,name,sequence_no")
@@ -78,6 +84,14 @@ export default async function ProjectSetup({
   const phaseCode = new Map((phases ?? []).map((p) => [p.id, p.code]));
   const unitsWhere = (key: "phase_id" | "plot_id" | "house_type_id", value: string) =>
     unitList.filter((u) => u[key] === value).length;
+  const areaOf = new Map(
+    (plots ?? []).map((p) => [p.id, p.land_area_sqm == null ? null : Number(p.land_area_sqm)]),
+  );
+  const areas = [...areaOf.values()].filter((a): a is number => a != null);
+  const standardSqm = areas.length ? Math.min(...areas) : null;
+  const basePrice = project?.base_unit_price == null ? null : Number(project.base_unit_price);
+  const perWah = Number(project?.extra_land_price_per_wah ?? defaultExtraLandPerWah);
+  const pr = t.project.prices;
 
   return (
     <div className="space-y-4">
@@ -304,6 +318,33 @@ export default async function ProjectSetup({
 
       {unitList.length ? (
         <Panel title={t.project.prices.title} description={t.project.prices.hint}>
+          <form action={savePricing} className="space-y-3 border-b border-line px-4 py-3">
+            {hidden}
+            <FormGrid>
+              <Field label={pr.basePrice} hint={pr.basePriceHint}>
+                <Input
+                  name="base_unit_price"
+                  inputMode="decimal"
+                  defaultValue={basePrice == null ? "" : formatNumber(locale, basePrice)}
+                  className="text-right num"
+                />
+              </Field>
+              <Field label={pr.extraLand} hint={pr.extraLandHint}>
+                <Input
+                  name="extra_land_price_per_wah"
+                  inputMode="decimal"
+                  defaultValue={formatNumber(locale, perWah)}
+                  className="text-right num"
+                />
+              </Field>
+            </FormGrid>
+            <div className="flex flex-wrap justify-end gap-2">
+              <SubmitButton variant="secondary">{pr.saveSettings}</SubmitButton>
+              <SubmitButton name="apply" value="1">
+                {pr.apply}
+              </SubmitButton>
+            </div>
+          </form>
           <form action={saveUnitPrices}>
             {hidden}
             <Table>
@@ -312,6 +353,8 @@ export default async function ProjectSetup({
                   <TH>{t.projects.fields.units}</TH>
                   <TH>{t.project.fields.houseType}</TH>
                   <TH>{t.common.status}</TH>
+                  <TH align="right">{pr.extraWah}</TH>
+                  <TH align="right">{pr.suggested}</TH>
                   <TH align="right">{t.project.fields.listPrice} (THB)</TH>
                 </tr>
               </THead>
@@ -319,11 +362,25 @@ export default async function ProjectSetup({
                 {unitList.map((u) => {
                   const ht = Array.isArray(u.house_types) ? u.house_types[0] : u.house_types;
                   const orig = u.list_price == null ? "" : String(Number(u.list_price));
+                  const area = u.plot_id ? (areaOf.get(u.plot_id) ?? null) : null;
+                  const extraWah =
+                    area != null && standardSqm != null ? (area - standardSqm) / sqmPerWah : null;
                   return (
                     <TR key={u.id}>
                       <TD className="font-mono text-2xs font-medium">{u.code}</TD>
                       <TD className="text-2xs text-muted">{ht?.code ?? "—"}</TD>
                       <TD className="text-2xs">{label(t.status.unit, u.status)}</TD>
+                      <TD align="right" className="text-2xs text-muted">
+                        {extraWah == null ? "—" : formatNumber(locale, extraWah, 2)}
+                      </TD>
+                      <TD align="right" className="text-2xs text-muted">
+                        {basePrice == null
+                          ? "—"
+                          : formatNumber(
+                              locale,
+                              suggestedPrice(basePrice, area, standardSqm, perWah),
+                            )}
+                      </TD>
                       <TD align="right">
                         <input type="hidden" name={`orig:${u.id}`} value={orig} />
                         <Input
