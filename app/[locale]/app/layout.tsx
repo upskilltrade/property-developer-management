@@ -27,6 +27,7 @@ export default async function AppLayout({
       items: [
         { label: t.nav.dashboard, href: base, icon: "dashboard", exact: true },
         { label: t.nav.control, href: `${base}/control`, icon: "control" },
+        { label: t.nav.market, href: `${base}/market`, icon: "market" },
         { label: t.nav.assistant, href: `${base}/assistant`, icon: "assistant" },
         { label: t.nav.projects, href: `${base}/projects`, icon: "projects", exact: true },
         { label: t.nav.sales, href: `${base}/sales`, icon: "sales" },
@@ -178,6 +179,9 @@ export default async function AppLayout({
               referenceRequired: t.flash.referenceRequired,
               standardNotVerified: t.flash.standardNotVerified,
               standardDocRequired: t.flash.standardDocRequired,
+              coordinate: t.flash.coordinate,
+              no_zones: t.flash.no_zones,
+              research_empty: t.flash.research_empty,
               ai_not_configured: t.flash.ai_not_configured,
               ai_no_photos: t.flash.ai_no_photos,
               ai_refusal: t.flash.ai_refusal,
