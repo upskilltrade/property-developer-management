@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   KeyRound,
   LogOut,
+  MapPinned,
   Menu,
   PieChart,
   Radar,
@@ -34,6 +35,7 @@ import { cn } from "@/components/ui/cn";
 const icons = {
   dashboard: LayoutDashboard,
   control: Radar,
+  market: MapPinned,
   projects: Building2,
   finance: Landmark,
   sales: Handshake,
