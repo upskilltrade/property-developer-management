@@ -114,6 +114,8 @@ const en: Dictionary = {
     lineIdRequired: "Enter your LINE user ID before turning on LINE notifications",
     coordinate: "That isn't a coordinate; use 12.5684, 99.9577 or paste a Google Maps link",
     no_zones: "Add a zone before running the AI analysis",
+    zone_no_center: "This zone has no centre yet. Find it by name or paste a link first",
+    zone_has_subs: "This zone still has sub zones, so it cannot be deleted",
     locate_none: "No pin found by name; paste a Google Maps share link instead",
     research_empty: "The AI found nothing new with a source",
     ai_not_configured: "ANTHROPIC_API_KEY is not set — AI features are unavailable",
@@ -2321,6 +2323,7 @@ const en: Dictionary = {
       "Pin land prices and competitor projects on the map; see prices by zone, the price to pay for land, and let AI research and suggest where to build",
     views: {
       overview: "Map & zones",
+      zones: "Zones",
       competitors: "Competitors",
       land: "Land prices",
       analysis: "AI analysis",
@@ -2422,6 +2425,30 @@ const en: Dictionary = {
     mapTitle: "Map",
     mapHint:
       "Circles = zones (green good · amber fair · red too dear) · squares = land prices · dots = competitors (purple A · blue B · grey C) · faded = found by AI, not checked",
+    zoneNameEn: "English name",
+    parentZone: "Inside main zone",
+    parentZoneHint: "Leave blank for a main zone. A main zone adds up all its sub zones",
+    isMainZone: "— Main zone —",
+    sortOrder: "Order",
+    aliases: "Other names",
+    aliasesHint: "Comma-separated, used in search, e.g. Black Mountain Hua Hin",
+    zoneCoordinateHint:
+      "Optional. Paste the zone centre or a Google Maps link, or leave blank and find it by name",
+    zonePickHint: "Leave blank to go by the coordinates",
+    zoneByCoordinate: "By coordinates (automatic)",
+    located: "located",
+    centerGeocoded: "≈ Found by name",
+    centerSet: "Pinned",
+    centerFromSubs: "From sub zones",
+    centerNone: "No centre yet",
+    locateZoneHint:
+      "Looks the zone up by name on OpenStreetMap. The spot is approximate; check it and fix it with a Google Maps link",
+    zonesHint:
+      "Main and sub zones for Hua Hin, Cha-Am, Pranburi and Sam Roi Yot. Search by Thai or English name or another name",
+    zoneSearch: "Search zones",
+    locateZones: "Find zone centres by name",
+    points: "Data points",
+    zoneSearchNone: "No zone matches the search",
     zoneTitle: "By zone",
     zoneHint: "Best numbers first",
     zoneFootnote:

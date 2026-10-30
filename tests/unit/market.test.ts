@@ -7,17 +7,33 @@ import {
   isMapsLink,
   readAssumptions,
   residualLandPerWah,
+  zoneArea,
+  zoneMatches,
   zoneOf,
+  parseAliases,
   type Competitor,
   type LandPrice,
   type Zone,
 } from "@/lib/market";
 
-const zone = (id: string, lat: number, lng: number, radius_m = 2000): Zone => ({
+const zone = (
+  id: string,
+  lat: number | null,
+  lng: number | null,
+  radius_m = 2000,
+  parent_id: string | null = null,
+): Zone => ({
   id,
+  parent_id,
   name: id,
+  name_en: null,
+  slug: id,
+  aliases: [],
+  sort_order: 0,
+  geocode_hint: null,
   center_lat: lat,
   center_lng: lng,
+  center_source: null,
   radius_m,
   notes: null,
 });
@@ -31,6 +47,7 @@ const land = (
   lat,
   lng,
   location_text: null,
+  zone_id: null,
   kind,
   price_per_wah: price,
   area_wah: null,
@@ -56,6 +73,7 @@ const comp = (lat: number, lng: number, price: number, area: number): Competitor
   house_area_max: area,
   land_area_min_wah: null,
   land_area_max_wah: null,
+  zone_id: null,
   bedrooms: null,
   units_total: null,
   offerings: [],
@@ -178,6 +196,56 @@ describe("comparables", () => {
     });
     expect(all.outside.residualPerWah!).toBeLessThan(0);
     expect(all.outside.targetPerWah).toBe(0);
+  });
+});
+
+describe("zone tree", () => {
+  it("rolls sub zones up into their main zone and lets a hand-picked zone win", () => {
+    const main = zone("hua-hin", null, null, 5000);
+    const a = zone("black-mountain", 12.5, 99.9, 1500, "hua-hin");
+    const b = zone("khao-takiab", 12.6, 99.9, 1500, "hua-hin");
+    const other = zone("cha-am", null, null);
+    const zones = [main, a, b, other];
+    const lands = [
+      land(12.5, 99.9, 8000),
+      land(12.6, 99.9, 9000),
+      { ...land(14, 100, 5000), zone_id: "cha-am" },
+    ];
+    const { zones: mains, subs, outside } = marketByZone(zones, lands, [], defaultAssumptions);
+    const hh = mains.find((s) => s.zone?.id === "hua-hin")!;
+    expect(hh.lands).toHaveLength(2);
+    expect(subs.map((s) => s.zone?.id).sort()).toEqual(["black-mountain", "khao-takiab"]);
+    expect(mains.find((s) => s.zone?.id === "cha-am")!.lands).toHaveLength(1);
+    expect(outside.lands).toHaveLength(0);
+  });
+  it("prefers the smallest circle and skips zones with no centre", () => {
+    const big = zone("big", 12.5, 99.9, 5000);
+    const small = zone("small", 12.51, 99.9, 1500, "big");
+    expect(zoneOf(12.505, 99.9, [big, small])?.id).toBe("small");
+    expect(zoneOf(12.5, 99.9, [zone("none", null, null)])).toBeNull();
+  });
+  it("draws a main zone with no centre over its located sub zones", () => {
+    const main = zone("m", null, null);
+    const area = zoneArea(main, [
+      main,
+      zone("s", 12.5, 99.9, 1000, "m"),
+      zone("t", 12.52, 99.9, 1000, "m"),
+    ]);
+    expect(area?.lat).toBeCloseTo(12.51);
+    expect(area!.radius).toBeGreaterThan(1000);
+    expect(zoneArea(main, [main])).toBeNull();
+  });
+  it("finds zones by any name and cleans typed aliases", () => {
+    const z = {
+      ...zone("x", null, null),
+      name: "แบล็คเมาน์เทน",
+      name_en: "Black Mountain",
+      aliases: ["BM Hua Hin"],
+    };
+    expect(zoneMatches(z, "black")).toBe(true);
+    expect(zoneMatches(z, "bm hua")).toBe(true);
+    expect(zoneMatches(z, "takiab")).toBe(false);
+    expect(parseAliases(" A, B\nA ; ")).toEqual(["A", "B"]);
   });
 });
 

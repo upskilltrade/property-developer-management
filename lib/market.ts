@@ -24,11 +24,22 @@ export const offeringOptions = [
   "WARRANTY_5Y",
 ] as const;
 
+/**
+ * A market zone. Main zones (parent_id null) hold sub zones, landmarks and roads. The centre is
+ * optional: a zone with none is never drawn and never catches points by distance.
+ */
 export type Zone = {
   id: string;
+  parent_id: string | null;
   name: string;
-  center_lat: number;
-  center_lng: number;
+  name_en: string | null;
+  slug: string | null;
+  aliases: string[];
+  sort_order: number;
+  geocode_hint: string | null;
+  center_lat: number | null;
+  center_lng: number | null;
+  center_source: "MANUAL" | "GEOCODED" | null;
   radius_m: number;
   notes: string | null;
 };
@@ -37,6 +48,7 @@ export type LandPrice = {
   lat: number | null;
   lng: number | null;
   location_text: string | null;
+  zone_id: string | null;
   kind: (typeof landPriceKinds)[number];
   price_per_wah: number;
   area_wah: number | null;
@@ -62,6 +74,7 @@ export type Competitor = {
   house_area_max: number | null;
   land_area_min_wah: number | null;
   land_area_max_wah: number | null;
+  zone_id: string | null;
   bedrooms: string | null;
   units_total: number | null;
   offerings: string[];
@@ -213,15 +226,61 @@ export function distanceM(aLat: number, aLng: number, bLat: number, bLng: number
   return 2 * r * Math.asin(Math.sqrt(h));
 }
 
-/** The nearest zone whose circle holds the point, or null. */
+/**
+ * The zone whose circle holds the point. The smallest circle wins, so a sub zone beats the main
+ * zone around it; between equal circles the nearest centre wins.
+ */
 export function zoneOf(lat: number | null, lng: number | null, zones: Zone[]) {
   if (lat == null || lng == null) return null;
   let best: { zone: Zone; d: number } | null = null;
   for (const z of zones) {
+    if (z.center_lat == null || z.center_lng == null) continue;
     const d = distanceM(lat, lng, z.center_lat, z.center_lng);
-    if (d <= z.radius_m && (!best || d < best.d)) best = { zone: z, d };
+    if (d > z.radius_m) continue;
+    if (
+      !best ||
+      z.radius_m < best.zone.radius_m ||
+      (z.radius_m === best.zone.radius_m && d < best.d)
+    )
+      best = { zone: z, d };
   }
   return best?.zone ?? null;
+}
+
+/** A point's zone: the one chosen by hand, else the one its coordinates fall in. */
+export function placeOf(
+  p: { zone_id?: string | null; lat: number | null; lng: number | null },
+  zones: Zone[],
+) {
+  return (p.zone_id && zones.find((z) => z.id === p.zone_id)) || zoneOf(p.lat, p.lng, zones);
+}
+
+/** The main zone a zone belongs to (itself when it is a main zone). */
+export function mainZoneOf(zone: Zone, zones: Zone[]) {
+  return (zone.parent_id && zones.find((z) => z.id === zone.parent_id)) || zone;
+}
+
+/** "Thai name · English name", or just one of them. */
+export function zoneLabel(z: Pick<Zone, "name" | "name_en">) {
+  return z.name_en && z.name_en !== z.name ? `${z.name} · ${z.name_en}` : z.name;
+}
+
+/** Whether a search matches the zone's Thai or English name or one of its aliases. */
+export function zoneMatches(z: Zone, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [z.name, z.name_en ?? "", ...(z.aliases ?? [])].some((x) => x.toLowerCase().includes(q));
+}
+
+/** Main zones in order, each with its sub zones in order. */
+export function zoneTree(zones: Zone[]) {
+  const order = (a: Zone, b: Zone) => a.sort_order - b.sort_order || a.name.localeCompare(b.name);
+  const ids = new Set(zones.map((z) => z.id));
+  const mains = zones.filter((z) => !z.parent_id || !ids.has(z.parent_id)).sort(order);
+  return mains.map((main) => ({
+    main,
+    subs: zones.filter((z) => z.parent_id === main.id).sort(order),
+  }));
 }
 
 export function median(values: number[]) {
@@ -354,30 +413,50 @@ export function zoneStats(
   };
 }
 
-/** Stats for every zone plus one bucket (zone null) for points outside all zones; best first. */
+/**
+ * Stats per main zone (its own points plus its sub zones'), per sub zone that has points, and one
+ * bucket for points in no zone. Zones are ranked best first.
+ */
 export function marketByZone(
   zones: Zone[],
   lands: LandPrice[],
   competitors: Competitor[],
   a: Assumptions,
 ) {
-  const bucket = new Map<string | null, { lands: LandPrice[]; comps: Competitor[] }>();
-  for (const z of zones) bucket.set(z.id, { lands: [], comps: [] });
-  bucket.set(null, { lands: [], comps: [] });
-  for (const l of lands) bucket.get(zoneOf(l.lat, l.lng, zones)?.id ?? null)!.lands.push(l);
-  for (const c of competitors) bucket.get(zoneOf(c.lat, c.lng, zones)?.id ?? null)!.comps.push(c);
+  const landsIn = new Map<string | null, LandPrice[]>();
+  const compsIn = new Map<string | null, Competitor[]>();
+  const add = <T>(map: Map<string | null, T[]>, key: string | null, x: T) =>
+    map.set(key, [...(map.get(key) ?? []), x]);
+  for (const l of lands) add(landsIn, placeOf(l, zones)?.id ?? null, l);
+  for (const c of competitors) add(compsIn, placeOf(c, zones)?.id ?? null, c);
+
   const rank: Record<Opportunity, number> = { GOOD: 0, FAIR: 1, WEAK: 2, NO_DATA: 3 };
-  const stats = zones.map((z) => {
-    const b = bucket.get(z.id)!;
-    return zoneStats(z, b.lands, b.comps, a);
-  });
-  stats.sort(
-    (x, y) =>
-      rank[x.opportunity] - rank[y.opportunity] ||
-      (y.headroomPct ?? -1e9) - (x.headroomPct ?? -1e9),
-  );
-  const outside = bucket.get(null)!;
-  return { zones: stats, outside: zoneStats(null, outside.lands, outside.comps, a) };
+  const best = (x: ZoneStats, y: ZoneStats) =>
+    rank[x.opportunity] - rank[y.opportunity] ||
+    (y.headroomPct ?? -1e9) - (x.headroomPct ?? -1e9) ||
+    (x.zone?.sort_order ?? 0) - (y.zone?.sort_order ?? 0);
+  const tree = zoneTree(zones);
+  const mains = tree
+    .map(({ main, subs }) => {
+      const ids = [main.id, ...subs.map((z) => z.id)];
+      return zoneStats(
+        main,
+        ids.flatMap((id) => landsIn.get(id) ?? []),
+        ids.flatMap((id) => compsIn.get(id) ?? []),
+        a,
+      );
+    })
+    .sort(best);
+  const subs = tree
+    .flatMap((t) => t.subs)
+    .filter((z) => landsIn.has(z.id) || compsIn.has(z.id))
+    .map((z) => zoneStats(z, landsIn.get(z.id) ?? [], compsIn.get(z.id) ?? [], a))
+    .sort(best);
+  return {
+    zones: mains,
+    subs,
+    outside: zoneStats(null, landsIn.get(null) ?? [], compsIn.get(null) ?? [], a),
+  };
 }
 
 export const opportunityTone = {
@@ -387,3 +466,34 @@ export const opportunityTone = {
   NO_DATA: "neutral",
 } as const;
 export const gradeTone = { A: "success", B: "info", C: "neutral" } as const;
+
+/**
+ * Where to draw or search a zone: its own centre, or for a main zone without one, the middle of
+ * its located sub zones with a radius that covers them. Null when nothing in it is located.
+ */
+export function zoneArea(zone: Zone, zones: Zone[]) {
+  if (zone.center_lat != null && zone.center_lng != null)
+    return { lat: zone.center_lat, lng: zone.center_lng, radius: zone.radius_m, derived: false };
+  const subs = zones.filter(
+    (z) => z.parent_id === zone.id && z.center_lat != null && z.center_lng != null,
+  );
+  if (!subs.length) return null;
+  const lat = subs.reduce((s, z) => s + z.center_lat!, 0) / subs.length;
+  const lng = subs.reduce((s, z) => s + z.center_lng!, 0) / subs.length;
+  const radius = Math.max(
+    ...subs.map((z) => distanceM(lat, lng, z.center_lat!, z.center_lng!) + z.radius_m),
+  );
+  return { lat, lng, radius: Math.round(radius), derived: true };
+}
+
+/** Splits typed aliases ("Black Mountain, แบล็คเมาน์เทน") into a clean, de-duplicated list. */
+export function parseAliases(text: string) {
+  return [
+    ...new Set(
+      text
+        .split(/[,\n;]/)
+        .map((x) => x.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
