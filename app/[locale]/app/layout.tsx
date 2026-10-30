@@ -186,6 +186,8 @@ export default async function AppLayout({
               no_zones: t.flash.no_zones,
               research_empty: t.flash.research_empty,
               locate_none: t.flash.locate_none,
+              zone_no_center: t.flash.zone_no_center,
+              zone_has_subs: t.flash.zone_has_subs,
               ai_not_configured: t.flash.ai_not_configured,
               ai_no_photos: t.flash.ai_no_photos,
               ai_refusal: t.flash.ai_refusal,

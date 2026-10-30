@@ -28,7 +28,12 @@ import {
   opportunityTone,
   productTypes,
   readAssumptions,
-  zoneOf,
+  mainZoneOf,
+  placeOf,
+  zoneArea,
+  zoneLabel,
+  zoneMatches,
+  zoneTree,
   type Assumptions,
   type Competitor,
   type LandPrice,
@@ -56,6 +61,7 @@ import {
   saveZone,
   verifyMarketRow,
   locateCompetitors,
+  locateZones,
   setMarketPin,
 } from "./actions";
 
@@ -63,7 +69,7 @@ export const metadata: Metadata = { title: "Land & market" };
 // AI research searches the web and can take a few minutes.
 export const maxDuration = 300;
 
-const views = ["overview", "competitors", "land", "analysis"] as const;
+const views = ["overview", "zones", "competitors", "land", "analysis"] as const;
 type View = (typeof views)[number];
 /** Hua Hin town centre, where the map opens before any zone exists. */
 const HUA_HIN = { lat: 12.5684, lng: 99.9577 };
@@ -102,7 +108,7 @@ export default async function MarketPage({
 
   const [{ data: zoneRows }, { data: landRows }, { data: compRows }, { data: analysisRows }] =
     await Promise.all([
-      supabase.from("market_zones").select("*").order("name"),
+      supabase.from("market_zones").select("*").order("sort_order").order("name"),
       supabase.from("land_prices").select("*").order("created_at", { ascending: false }),
       supabase.from("competitor_projects").select("*").order("name"),
       supabase
@@ -114,24 +120,47 @@ export default async function MarketPage({
   const zones = (zoneRows ?? []) as Zone[];
   const lands = (landRows ?? []) as LandPrice[];
   const comps = (compRows ?? []) as Competitor[];
-  const { zones: stats, outside } = marketByZone(zones, lands, comps, a);
+  const { zones: stats, subs: subStats, outside } = marketByZone(zones, lands, comps, a);
+  const statOf = new Map([...stats, ...subStats].map((s) => [s.zone!.id, s]));
+  const tree = zoneTree(zones);
   const latest = (analysisRows?.[0] ?? null) as AnalysisRow | null;
   const ai = aiConfigured();
-  const zoneName = (lat: number | null, lng: number | null) =>
-    zoneOf(lat, lng, zones)?.name ?? m.outside;
+  /** The zone a point counts in, shown as "sub zone" with its main zone underneath. */
+  const zoneCell = (p: { zone_id: string | null; lat: number | null; lng: number | null }) => {
+    const z = placeOf(p, zones);
+    if (!z) return <span className="text-muted">{m.outside}</span>;
+    const main = mainZoneOf(z, zones);
+    return (
+      <>
+        {z.name}
+        {main.id !== z.id ? <div className="text-muted">{main.name}</div> : null}
+      </>
+    );
+  };
   const wah = (v: number | null) => (v == null ? "—" : formatNumber(locale, v));
   const money = (v: number | null) => (v == null ? "—" : formatMoneyCompact(locale, v));
   const unverified = <Badge tone="warning">{m.unverified}</Badge>;
 
-  const mapZones: MapZone[] = stats.map((s) => ({
-    id: s.zone!.id,
-    name: s.zone!.name,
-    lat: s.zone!.center_lat,
-    lng: s.zone!.center_lng,
-    radius: s.zone!.radius_m,
-    tone: s.opportunity,
-    label: `${m.opportunities[s.opportunity]} · ${m.landMedian} ${wah(s.landMedian)} · ${m.target} ${wah(s.targetPerWah)}`,
-  }));
+  // Located zones only: a main zone without its own centre is drawn over its located sub zones.
+  const mapZones: MapZone[] = zones.flatMap((z) => {
+    const area = zoneArea(z, zones);
+    if (!area) return [];
+    const s = statOf.get(z.id);
+    return [
+      {
+        id: z.id,
+        name: z.name,
+        lat: area.lat,
+        lng: area.lng,
+        radius: area.radius,
+        tone: s?.opportunity ?? "NO_DATA",
+        label: s
+          ? `${m.opportunities[s.opportunity]} · ${m.landMedian} ${wah(s.landMedian)} · ${m.target} ${wah(s.targetPerWah)}`
+          : m.opportunities.NO_DATA,
+      },
+    ];
+  });
+  const firstArea = zones.map((z) => zoneArea(z, zones)).find(Boolean);
   const mapPoints: MapPoint[] = [
     ...lands
       .filter((l) => l.lat != null && l.lng != null)
@@ -236,15 +265,45 @@ export default async function MarketPage({
 
   const zoneForm = (z?: Zone) => (
     <form action={saveZone} className="space-y-3">
-      <Hidden values={{ ...hidden, id: z?.id ?? "" }} />
-      <Field label={m.zoneName} required>
-        <Input name="name" required defaultValue={z?.name} placeholder={m.zoneNamePlaceholder} />
+      <Hidden
+        values={{
+          ...hidden,
+          id: z?.id ?? "",
+          orig_coordinate: z ? coord(z.center_lat, z.center_lng) : "",
+        }}
+      />
+      <FormGrid>
+        <Field label={m.zoneName} required>
+          <Input name="name" required defaultValue={z?.name} placeholder={m.zoneNamePlaceholder} />
+        </Field>
+        <Field label={m.zoneNameEn}>
+          <Input name="name_en" defaultValue={z?.name_en ?? ""} placeholder="Black Mountain" />
+        </Field>
+      </FormGrid>
+      <FormGrid>
+        <Field label={m.parentZone} hint={m.parentZoneHint}>
+          <Select name="parent_id" defaultValue={z?.parent_id ?? ""}>
+            <option value="">{m.isMainZone}</option>
+            {tree
+              .filter((t) => t.main.id !== z?.id)
+              .map((t) => (
+                <option key={t.main.id} value={t.main.id}>
+                  {zoneLabel(t.main)}
+                </option>
+              ))}
+          </Select>
+        </Field>
+        <Field label={m.sortOrder}>
+          <Input name="sort_order" type="number" defaultValue={z?.sort_order ?? 0} />
+        </Field>
+      </FormGrid>
+      <Field label={m.aliases} hint={m.aliasesHint}>
+        <Input name="aliases" defaultValue={z?.aliases?.join(", ") ?? ""} />
       </Field>
       <FormGrid>
-        <Field label={m.coordinate} required hint={m.coordinateHint}>
+        <Field label={m.coordinate} hint={m.zoneCoordinateHint}>
           <Input
             name="coordinate"
-            required
             defaultValue={z ? coord(z.center_lat, z.center_lng) : ""}
             placeholder="12.5684, 99.9577"
           />
@@ -266,6 +325,24 @@ export default async function MarketPage({
         <SubmitButton>{z ? m.save : m.addZone}</SubmitButton>
       </SheetFooter>
     </form>
+  );
+  /** Pick a zone by hand; left blank, the point's coordinates decide. */
+  const zoneSelect = (current: string | null | undefined) => (
+    <Field label={m.zone} hint={m.zonePickHint}>
+      <Select name="zone_id" defaultValue={current ?? ""}>
+        <option value="">{m.zoneByCoordinate}</option>
+        {tree.map((t) => (
+          <optgroup key={t.main.id} label={zoneLabel(t.main)}>
+            <option value={t.main.id}>{t.main.name}</option>
+            {t.subs.map((z) => (
+              <option key={z.id} value={z.id}>
+                · {zoneLabel(z)}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </Select>
+    </Field>
   );
 
   const landForm = (l?: LandPrice) => (
@@ -313,6 +390,7 @@ export default async function MarketPage({
       <Field label={m.locationText}>
         <Input name="location_text" defaultValue={l?.location_text ?? ""} />
       </Field>
+      {zoneSelect(l?.zone_id)}
       <Field label={m.sourceUrl}>
         <Input name="source_url" type="url" defaultValue={l?.source_url ?? ""} />
       </Field>
@@ -348,6 +426,7 @@ export default async function MarketPage({
           <Input name="location_text" defaultValue={c?.location_text ?? ""} />
         </Field>
       </FormGrid>
+      {zoneSelect(c?.zone_id)}
       <FormGrid cols={3}>
         <Field label={m.productType}>
           <Select name="product_type" defaultValue={c?.product_type ?? "POOL_VILLA"}>
@@ -479,7 +558,12 @@ export default async function MarketPage({
     body = (
       <div className="space-y-4">
         <KpiStrip cols={4}>
-          <Kpi label={m.kpiZones} value={formatNumber(locale, zones.length)} icon={<MapPinned />} />
+          <Kpi
+            label={m.kpiZones}
+            value={formatNumber(locale, tree.length)}
+            sub={`${m.located} ${formatNumber(locale, zones.filter((z) => z.center_lat != null).length)}/${formatNumber(locale, zones.length)}`}
+            icon={<MapPinned />}
+          />
           <Kpi label={m.kpiLand} value={formatNumber(locale, lands.length)} icon={<Landmark />} />
           <Kpi label={m.kpiCompetitors} value={formatNumber(locale, comps.length)} />
           <Kpi
@@ -493,7 +577,7 @@ export default async function MarketPage({
           <MarketMap
             zones={mapZones}
             points={mapPoints}
-            center={zones[0] ? { lat: zones[0].center_lat, lng: zones[0].center_lng } : HUA_HIN}
+            center={firstArea ? { lat: firstArea.lat, lng: firstArea.lng } : HUA_HIN}
             labels={{
               street: m.street,
               satellite: m.satellite,
@@ -505,6 +589,8 @@ export default async function MarketPage({
         </Panel>
         <ZoneTable
           stats={stats}
+          subs={subStats}
+          zones={zones}
           outside={outside}
           locale={locale}
           t={t}
@@ -515,6 +601,134 @@ export default async function MarketPage({
         />
         <AssumptionsForm a={a} m={m} base={base} view={view} />
       </div>
+    );
+  } else if (view === "zones") {
+    const search = q.zq ?? "";
+    const count = (id: string) =>
+      lands.filter((l) => placeOf(l, zones)?.id === id).length +
+      comps.filter((c) => placeOf(c, zones)?.id === id).length;
+    const unlocated = zones.filter((z) => z.center_lat == null).length;
+    const shown = tree
+      .map((t) => ({
+        main: t.main,
+        subs: t.subs.filter((z) => zoneMatches(z, search)),
+        hit: zoneMatches(t.main, search),
+      }))
+      .filter((t) => t.hit || t.subs.length);
+    const zoneRow = (z: Zone, sub: boolean) => (
+      <TR key={z.id}>
+        <TD>
+          <div className={sub ? "pl-5" : "font-semibold"}>
+            {sub ? "· " : ""}
+            {z.name}
+          </div>
+          {z.name_en ? (
+            <div className={`text-2xs text-muted ${sub ? "pl-5" : ""}`}>{z.name_en}</div>
+          ) : null}
+        </TD>
+        <TD className="text-2xs text-muted">{z.aliases?.join(", ") || "—"}</TD>
+        <TD className="text-2xs">
+          {z.center_lat != null ? (
+            <Badge tone={z.center_source === "GEOCODED" ? "warning" : "success"}>
+              {z.center_source === "GEOCODED" ? m.centerGeocoded : m.centerSet}
+            </Badge>
+          ) : !sub && zoneArea(z, zones) ? (
+            <span className="text-muted">{m.centerFromSubs}</span>
+          ) : (
+            <span className="text-muted">{m.centerNone}</span>
+          )}
+          {z.center_lat != null ? (
+            <div className="text-muted">{formatNumber(locale, z.radius_m / 1000, 1)} km</div>
+          ) : null}
+        </TD>
+        <TD align="right" className="num">
+          {formatNumber(
+            locale,
+            sub
+              ? count(z.id)
+              : [z, ...zones.filter((x) => x.parent_id === z.id)].reduce(
+                  (n, x) => n + count(x.id),
+                  0,
+                ),
+          )}
+        </TD>
+        <TD>
+          <div className="flex items-center justify-end gap-1">
+            {z.center_lat == null && sub ? (
+              <form action={locateZones}>
+                <Hidden values={{ ...hidden, id: z.id }} />
+                <SubmitButton size="xs" variant="ghost" title={m.locateZoneHint}>
+                  <Search />
+                </SubmitButton>
+              </form>
+            ) : null}
+            <Sheet
+              title={`${m.edit} · ${z.name}`}
+              triggerLabel={m.edit}
+              triggerIcon={<Pencil />}
+              triggerVariant="ghost"
+              triggerSize="xs"
+            >
+              {zoneForm(z)}
+            </Sheet>
+            {deleteButton("zone", z.id)}
+          </div>
+        </TD>
+      </TR>
+    );
+    body = (
+      <Panel
+        title={m.views.zones}
+        description={m.zonesHint}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <form action={base} method="get" className="flex items-center gap-1.5">
+              <input type="hidden" name="view" value="zones" />
+              <Input
+                name="zq"
+                defaultValue={search}
+                placeholder={m.zoneSearch}
+                className="h-8 w-48 text-[13px]"
+                aria-label={m.zoneSearch}
+              />
+              <SubmitButton size="xs" variant="secondary">
+                <Search />
+              </SubmitButton>
+            </form>
+            {unlocated ? (
+              <form action={locateZones}>
+                <Hidden values={hidden} />
+                <SubmitButton size="xs" variant="secondary" title={m.locateZoneHint}>
+                  <MapPinned />
+                  {m.locateZones} ({unlocated})
+                </SubmitButton>
+              </form>
+            ) : null}
+          </div>
+        }
+      >
+        {shown.length ? (
+          <Table>
+            <THead>
+              <tr>
+                <TH>{m.zone}</TH>
+                <TH>{m.aliases}</TH>
+                <TH>{m.coordinate}</TH>
+                <TH align="right">{m.points}</TH>
+                <TH />
+              </tr>
+            </THead>
+            <tbody>
+              {shown.flatMap((t) => [
+                zoneRow(t.main, false),
+                ...t.subs.map((z) => zoneRow(z, true)),
+              ])}
+            </tbody>
+          </Table>
+        ) : (
+          <EmptyState title={search ? m.zoneSearchNone : m.emptyZones} />
+        )}
+      </Panel>
     );
   } else if (view === "competitors") {
     body = (
@@ -577,7 +791,7 @@ export default async function MarketPage({
                       </div>
                       {c.lat == null ? pinForm("competitor", c.id) : null}
                     </TD>
-                    <TD className="text-2xs">{zoneName(c.lat, c.lng)}</TD>
+                    <TD className="text-2xs">{zoneCell(c)}</TD>
                     <TD>
                       {c.grade ? (
                         <Badge tone={gradeTone[c.grade as keyof typeof gradeTone] ?? "neutral"}>
@@ -671,7 +885,7 @@ export default async function MarketPage({
                     </div>
                     {l.lat == null ? pinForm("land", l.id) : null}
                   </TD>
-                  <TD className="text-2xs">{zoneName(l.lat, l.lng)}</TD>
+                  <TD className="text-2xs">{zoneCell(l)}</TD>
                   <TD>{label(m.kinds, l.kind)}</TD>
                   <TD align="right" className="num font-medium">
                     {formatNumber(locale, l.price_per_wah)}
@@ -760,7 +974,14 @@ export default async function MarketPage({
             key: v,
             label: m.views[v],
             href: href(v),
-            count: v === "competitors" ? comps.length : v === "land" ? lands.length : undefined,
+            count:
+              v === "competitors"
+                ? comps.length
+                : v === "land"
+                  ? lands.length
+                  : v === "zones"
+                    ? zones.length
+                    : undefined,
           }))}
         />
       </div>
@@ -771,6 +992,8 @@ export default async function MarketPage({
 
 function ZoneTable({
   stats,
+  subs,
+  zones,
   outside,
   locale,
   t,
@@ -780,6 +1003,8 @@ function ZoneTable({
   deleteButton,
 }: {
   stats: ZoneStats[];
+  subs: ZoneStats[];
+  zones: Zone[];
   outside: ZoneStats;
   locale: Locale;
   t: Dictionary;
@@ -790,7 +1015,13 @@ function ZoneTable({
 }) {
   const m = t.market;
   const wah = (v: number | null) => (v == null ? "—" : formatNumber(locale, v));
-  const rows = outside.lands.length || outside.competitors.length ? [...stats, outside] : stats;
+  const hasData = (s: ZoneStats) => s.lands.length + s.competitors.length > 0;
+  // Main zones with data, each followed by its sub zones with data; every main zone if none has.
+  const mains = stats.some(hasData) ? stats.filter(hasData) : stats;
+  const rows = [
+    ...mains.flatMap((s) => [s, ...subs.filter((x) => x.zone?.parent_id === s.zone?.id)]),
+    ...(hasData(outside) ? [outside] : []),
+  ];
   return (
     <Panel title={m.zoneTitle} description={m.zoneHint}>
       {rows.length ? (
@@ -812,10 +1043,13 @@ function ZoneTable({
             {rows.map((s) => (
               <TR key={s.zone?.id ?? "outside"}>
                 <TD>
-                  <div className="font-medium">{s.zone?.name ?? m.outside}</div>
-                  <div className="text-2xs text-muted">
+                  <div className={s.zone?.parent_id ? "pl-4" : "font-medium"}>
+                    {s.zone?.parent_id ? "· " : ""}
+                    {s.zone?.name ?? m.outside}
+                  </div>
+                  <div className={`text-2xs text-muted ${s.zone?.parent_id ? "pl-4" : ""}`}>
                     {s.lands.length} {m.landPoints}
-                    {s.zone ? ` · ${formatNumber(locale, s.zone.radius_m / 1000, 1)} km` : ""}
+                    {s.zone?.name_en ? ` · ${s.zone.name_en}` : ""}
                   </div>
                 </TD>
                 <TD>
@@ -868,7 +1102,7 @@ function ZoneTable({
                 <TD>
                   {s.zone ? (
                     <div className="flex items-center justify-end gap-1">
-                      {ai ? (
+                      {ai && zoneArea(s.zone, zones) ? (
                         <form action={researchZone}>
                           <Hidden values={{ ...hidden, id: s.zone.id }} />
                           <SubmitButton size="xs" variant="secondary" title={m.researchHint}>

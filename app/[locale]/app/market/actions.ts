@@ -15,6 +15,9 @@ import {
   placeQueries,
   productTypes,
   readAssumptions,
+  mainZoneOf,
+  parseAliases,
+  zoneArea,
   type Competitor,
   type LandPrice,
   type Zone,
@@ -65,23 +68,68 @@ async function coordinate(fd: FormData, required: boolean) {
 
 export async function saveZone(fd: FormData) {
   const { supabase, org, back, finish, userId } = await context(fd);
-  const at = await coordinate(fd, true);
+  const at = await coordinate(fd, false);
   const name = str(fd, "name");
   if (at === "invalid" || !name) redirect(withFlash(back, "error", "coordinate"));
+  const id = str(fd, "id");
+  const parent = optStr(fd, "parent_id");
+  if (parent && parent === id) redirect(withFlash(back, "error", "invalid"));
+  // A centre left as it was keeps its source (e.g. found by name); a new one was set by hand.
+  const unchanged = str(fd, "coordinate") === str(fd, "orig_coordinate");
   const row = {
     organization_id: org,
+    parent_id: parent,
     name,
+    name_en: optStr(fd, "name_en"),
+    aliases: parseAliases(str(fd, "aliases")),
+    sort_order: Math.round(num(fd, "sort_order") ?? 0),
     center_lat: at.lat,
     center_lng: at.lng,
+    ...(unchanged ? {} : { center_source: at.lat == null ? null : "MANUAL" }),
     radius_m: Math.round((positive(fd, "radius_km") ?? 2) * 1000),
     notes: optStr(fd, "notes"),
     updated_at: new Date().toISOString(),
   };
-  const id = str(fd, "id");
   const { error } = id
     ? await supabase.from("market_zones").update(row).eq("id", id)
     : await supabase.from("market_zones").insert({ ...row, created_by: userId });
   finish(error);
+}
+
+/**
+ * Finds a centre for zones that have none, by name with OpenStreetMap, using the zone's (or its
+ * main zone's) place hint such as "Hua Hin, Prachuap Khiri Khan". Found centres are marked as
+ * found by name so the team knows to check them.
+ */
+export async function locateZones(fd: FormData) {
+  const { supabase, back } = await context(fd);
+  const { data } = await supabase.from("market_zones").select("*");
+  const zones = (data ?? []) as Zone[];
+  const one = str(fd, "id");
+  const todo = zones.filter((z) => z.center_lat == null && (!one || z.id === one));
+  const started = Date.now();
+  let found = 0;
+  for (const z of todo) {
+    if (Date.now() - started > 240_000) break;
+    const hint = z.geocode_hint ?? mainZoneOf(z, zones).geocode_hint ?? "Thailand";
+    const names = [...new Set([z.name_en, z.name].filter(Boolean) as string[])];
+    // A main zone is only located from its own name with no hint, never from the hint alone.
+    const queries = z.parent_id ? names.map((n) => `${n}, ${hint}`) : names.map((n) => n);
+    for (const q of queries) {
+      const g = await geocode(q);
+      await pause(1100);
+      if (!g) continue;
+      const { error } = await supabase
+        .from("market_zones")
+        .update({ center_lat: g.lat, center_lng: g.lng, center_source: "GEOCODED" })
+        .eq("id", z.id);
+      if (!error) found++;
+      break;
+    }
+  }
+  revalidatePath(`/${formLocale(fd)}/app/market`);
+  if (!found) redirect(withFlash(back, "error", "locate_none"));
+  redirect(withFlash(back, "saved", "located_approx"));
 }
 
 export async function saveLandPrice(fd: FormData) {
@@ -97,6 +145,7 @@ export async function saveLandPrice(fd: FormData) {
     lat: at.lat,
     lng: at.lng,
     location_text: optStr(fd, "location_text"),
+    zone_id: optStr(fd, "zone_id"),
     kind: oneOf(landPriceKinds, str(fd, "kind"), "ASKING"),
     price_per_wah: perWah,
     area_wah: positive(fd, "area_wah"),
@@ -130,6 +179,7 @@ export async function saveCompetitor(fd: FormData) {
     lat: at.lat,
     lng: at.lng,
     location_text: optStr(fd, "location_text"),
+    zone_id: optStr(fd, "zone_id"),
     product_type: oneOf(productTypes, str(fd, "product_type"), "POOL_VILLA"),
     status: oneOf(competitorStatuses, str(fd, "status"), "SELLING"),
     grade: oneOf(competitorGrades, str(fd, "grade")),
@@ -167,10 +217,12 @@ const tables = {
 } as const;
 
 export async function deleteMarketRow(fd: FormData) {
-  const { supabase, finish } = await context(fd);
+  const { supabase, back, finish } = await context(fd);
   const table = tables[str(fd, "table") as keyof typeof tables];
   if (!table) finish({ message: "invalid" });
   const { error } = await supabase.from(table).delete().eq("id", str(fd, "id"));
+  // A zone with sub zones in it is protected by the database (restrict).
+  if (error?.code === "23503") redirect(withFlash(back, "error", "zone_has_subs"));
   finish(error, "deleted");
 }
 
@@ -265,12 +317,12 @@ async function logTurn(
 export async function researchZone(fd: FormData) {
   const { supabase, org, back, userId } = await context(fd);
   if (!aiConfigured()) redirect(withFlash(back, "error", "ai_not_configured"));
-  const { data: zone } = await supabase
-    .from("market_zones")
-    .select("id,name,center_lat,center_lng,radius_m")
-    .eq("id", str(fd, "id"))
-    .maybeSingle();
+  const { data: zoneRows } = await supabase.from("market_zones").select("*");
+  const allZones = (zoneRows ?? []) as Zone[];
+  const zone = allZones.find((z) => z.id === str(fd, "id"));
   if (!zone) redirect(withFlash(back, "error", "invalid"));
+  const area = zoneArea(zone, allZones);
+  if (!area) redirect(withFlash(back, "error", "zone_no_center"));
   const { data: known } = await supabase.from("competitor_projects").select("name");
 
   let errorKey: string | null = null;
@@ -278,10 +330,12 @@ export async function researchZone(fd: FormData) {
   let added = 0;
   try {
     const found = await researchArea({
-      area: zone.name,
-      lat: zone.center_lat,
-      lng: zone.center_lng,
-      radiusKm: Math.max(1, Math.round(zone.radius_m / 1000)),
+      area: [zone.name, zone.name_en, zone.geocode_hint ?? mainZoneOf(zone, allZones).geocode_hint]
+        .filter(Boolean)
+        .join(", "),
+      lat: area.lat,
+      lng: area.lng,
+      radiusKm: Math.max(1, Math.round(area.radius / 1000)),
       known: (known ?? []).map((k) => k.name),
     });
     usage = found.usage;
@@ -293,9 +347,8 @@ export async function researchZone(fd: FormData) {
       observed_on: today,
       created_by: userId,
     };
-    // A row without a coordinate is pinned to the zone centre so it counts in this zone.
-    const pin = (lat: number | null, lng: number | null) =>
-      lat != null && lng != null ? { lat, lng } : { lat: zone.center_lat, lng: zone.center_lng };
+    // Every row found for this zone is put in it; one without a coordinate stays unpinned.
+    const pin = (lat: number | null, lng: number | null) => ({ lat, lng, zone_id: zone.id });
     const knownNames = new Set((known ?? []).map((k) => k.name.trim().toLowerCase()));
     const comps = found.competitors
       .filter((c) => !knownNames.has(c.name.trim().toLowerCase()))
@@ -304,13 +357,13 @@ export async function researchZone(fd: FormData) {
         ...c,
         ...pin(c.lat, c.lng),
         units_total: c.units_total == null ? null : Math.round(c.units_total),
-        notes: c.lat == null ? `ตำแหน่งโดยประมาณ (กลางโซน ${zone.name})` : null,
+        notes: null,
       }));
     const lands = found.land_prices.map((l) => ({
       ...ai,
       ...l,
       ...pin(l.lat, l.lng),
-      notes: l.lat == null ? `ตำแหน่งโดยประมาณ (กลางโซน ${zone.name})` : null,
+      notes: null,
     }));
     const results = await Promise.all([
       comps.length ? supabase.from("competitor_projects").insert(comps) : { error: null },
