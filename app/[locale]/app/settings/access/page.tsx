@@ -110,6 +110,10 @@ export default async function AccessPage({ params }: { params: Promise<{ locale:
   const permissionCount = new Map<string, number>();
   for (const p of rolePermissions ?? [])
     permissionCount.set(p.role_id, (permissionCount.get(p.role_id) ?? 0) + 1);
+  // System roles with no permissions are placeholders; assigning one gives a login nothing to do.
+  const assignableRoles = (roles ?? []).filter(
+    (r) => !r.is_system || (permissionCount.get(r.id) ?? 0) > 0,
+  );
   const projectCode = new Map((projects ?? []).map((p) => [p.id, p.code]));
   const scopeLabel = (type: string, scopeId: string | null) =>
     type === "ORGANIZATION" ? a.scopeOrg : (projectCode.get(scopeId ?? "") ?? scopeId);
@@ -193,7 +197,7 @@ export default async function AccessPage({ params }: { params: Promise<{ locale:
                       <option value="" disabled>
                         —
                       </option>
-                      {(roles ?? []).map((r) => (
+                      {assignableRoles.map((r) => (
                         <option key={r.id} value={r.id}>
                           {r.code} · {roleName(r)}
                         </option>
@@ -281,7 +285,7 @@ export default async function AccessPage({ params }: { params: Promise<{ locale:
                     <option value="" disabled>
                       —
                     </option>
-                    {(roles ?? []).map((r) => (
+                    {assignableRoles.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.code} · {roleName(r)}
                       </option>

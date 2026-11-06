@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
-import { getSession } from "@/lib/auth";
+import { getStaffSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
 import { formatDate } from "@/lib/format";
@@ -21,7 +21,7 @@ export default async function ProjectLayout({
 }) {
   const { locale, t } = await resolveLocale(params);
   const { id } = await params;
-  const { supabase } = await getSession(locale);
+  const { supabase, canManageOrganization } = await getStaffSession(locale);
   const { data: project } = await supabase
     .from("projects")
     .select("id,code,name,status,target_completion_date")
@@ -49,14 +49,16 @@ export default async function ProjectLayout({
         }
         subtitle={`${t.projects.fields.target}: ${formatDate(locale, project.target_completion_date)}`}
         actions={
-          <Sheet
-            title={t.projects.edit}
-            triggerLabel={t.common.edit}
-            triggerIcon={<Pencil />}
-            triggerVariant="secondary"
-          >
-            <ProjectForm t={t} locale={locale} action={updateProject} project={project} />
-          </Sheet>
+          canManageOrganization && (
+            <Sheet
+              title={t.projects.edit}
+              triggerLabel={t.common.edit}
+              triggerIcon={<Pencil />}
+              triggerVariant="secondary"
+            >
+              <ProjectForm t={t} locale={locale} action={updateProject} project={project} />
+            </Sheet>
+          )
         }
       />
       <div className="mb-4">
