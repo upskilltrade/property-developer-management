@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { getSession } from "@/lib/auth";
+import { getStaffSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { loadSalesRefs } from "@/lib/sales-data";
 import { PageHeader } from "@/components/ui/page-header";
@@ -17,7 +17,7 @@ export default async function SalesLayout({
   params: Promise<{ locale: string }>;
 }) {
   const { locale, t } = await resolveLocale(params);
-  const { supabase } = await getSession(locale);
+  const { supabase } = await getStaffSession(locale);
   const refs = await loadSalesRefs(supabase);
   const base = `/${locale}/app/sales`;
 

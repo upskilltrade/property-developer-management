@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Landmark } from "lucide-react";
-import { getSession } from "@/lib/auth";
+import { getStaffSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
 import { formatMoney, formatMoneyCompact, toNumber } from "@/lib/format";
@@ -18,7 +18,7 @@ export const metadata: Metadata = { title: "Finance" };
 
 export default async function FinanceCenter({ params }: { params: Promise<{ locale: string }> }) {
   const { locale, t } = await resolveLocale(params);
-  const { supabase } = await getSession(locale);
+  const { supabase } = await getStaffSession(locale);
 
   const { data: projects } = await supabase
     .from("projects")

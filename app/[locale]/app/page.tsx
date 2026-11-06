@@ -10,7 +10,7 @@ import {
   KeyRound,
   Wallet,
 } from "lucide-react";
-import { getSession } from "@/lib/auth";
+import { getStaffSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
 import {
@@ -53,7 +53,7 @@ type Portfolio = {
 
 export default async function Dashboard({ params }: { params: Promise<{ locale: string }> }) {
   const { locale, t } = await resolveLocale(params);
-  const { supabase, displayName } = await getSession(locale);
+  const { supabase, displayName } = await getStaffSession(locale);
   const base = `/${locale}/app`;
 
   const [

@@ -20,8 +20,10 @@ const routeByRole: [string, string][] = [
 
 export default async function WorkspaceEntry({ params }: { params: Promise<{ locale: string }> }) {
   const locale = toLocale((await params).locale);
-  const { roles } = await getSession(locale);
+  const { roles, isInternal } = await getSession(locale);
   const match = routeByRole.find(([role]) => roles.has(role));
-  if (!match) redirect(`/${locale}/app/access-pending`);
-  redirect(`/${locale}/app${match[1]}`);
+  if (match) redirect(`/${locale}/app${match[1]}`);
+  // Custom roles (CUSTOM_*) are staff the owner set up; their projects are the natural start.
+  if (isInternal) redirect(`/${locale}/app/projects`);
+  redirect(`/${locale}/app/access-pending`);
 }

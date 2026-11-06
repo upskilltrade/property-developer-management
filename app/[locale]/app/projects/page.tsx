@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Building2, Search } from "lucide-react";
-import { getSession } from "@/lib/auth";
+import { getStaffSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
 import { formatDate, formatMoney, formatNumber, toNumber } from "@/lib/format";
@@ -28,7 +28,7 @@ export default async function ProjectsPage({
   searchParams: Promise<{ q?: string; status?: string }>;
 }) {
   const { locale, t } = await resolveLocale(params);
-  const { supabase } = await getSession(locale);
+  const { supabase } = await getStaffSession(locale);
   const { q = "", status = "" } = await searchParams;
   const base = `/${locale}/app/projects`;
 

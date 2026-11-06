@@ -8,7 +8,7 @@ import {
   Home,
   Wallet,
 } from "lucide-react";
-import { getSession } from "@/lib/auth";
+import { getStaffSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
 import { formatMoneyCompact, formatNumber, formatPercent } from "@/lib/format";
@@ -61,7 +61,7 @@ export default async function ControlCenter({
   const view: View = (views as readonly string[]).includes(q.view ?? "")
     ? (q.view as View)
     : "overview";
-  const { supabase } = await getSession(locale);
+  const { supabase } = await getStaffSession(locale);
   const appBase = `/${locale}/app`;
   const project = q.project || null;
   const c = t.control;
