@@ -24,23 +24,28 @@ import {
   saveMaterial,
   setMaterialImage,
 } from "./actions";
+import { StandardSpecView, UnitSpecView } from "./spec-views";
 
 export const metadata: Metadata = { title: "Design" };
 
-type View = "drawings" | "selections" | "materials";
+type View = "drawings" | "spec" | "unitspec" | "selections" | "materials";
+const views: View[] = ["drawings", "spec", "unitspec", "selections", "materials"];
 
-/** Design control for one project: drawing register, unit material selections, material library. */
+/**
+ * Design control for one project: drawing register, spec list (project standard and per-unit
+ * upgrades), unit material selections, material library.
+ */
 export default async function ProjectDesign({
   params,
   searchParams,
 }: {
   params: Promise<{ locale: string; id: string }>;
-  searchParams: Promise<{ view?: string; discipline?: string }>;
+  searchParams: Promise<{ view?: string; discipline?: string; unit?: string }>;
 }) {
   const { locale, t } = await resolveLocale(params);
   const { id } = await params;
   const q = await searchParams;
-  const view: View = q.view === "selections" || q.view === "materials" ? q.view : "drawings";
+  const view: View = views.find((v) => v === q.view) ?? "drawings";
   const { supabase } = await getSession(locale);
   const d = t.design;
   const base = `/${locale}/app/projects/${id}/design`;
@@ -108,6 +113,8 @@ export default async function ProjectDesign({
           active={view}
           items={[
             { key: "drawings", label: d.views.drawings, href: `${base}?view=drawings` },
+            { key: "spec", label: t.spec.views.standard, href: `${base}?view=spec` },
+            { key: "unitspec", label: t.spec.views.unit, href: `${base}?view=unitspec` },
             { key: "selections", label: d.views.selections, href: `${base}?view=selections` },
             { key: "materials", label: d.views.materials, href: `${base}?view=materials` },
           ]}
@@ -345,6 +352,21 @@ export default async function ProjectDesign({
             )}
           </Panel>
         </>
+      ) : null}
+
+      {view === "spec" ? (
+        <StandardSpecView
+          ctx={{ locale, t, projectId: id, back }}
+          organizationId={project.organization_id}
+        />
+      ) : null}
+
+      {view === "unitspec" ? (
+        <UnitSpecView
+          ctx={{ locale, t, projectId: id, back }}
+          units={units ?? []}
+          unitId={q.unit}
+        />
       ) : null}
 
       {view === "selections" ? (

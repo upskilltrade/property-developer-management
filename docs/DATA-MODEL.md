@@ -120,6 +120,8 @@ specifications and materials support localized customer-facing content.
 
 material_selections link unit + room/zone + material and record customer approval where relevant.
 
+spec_items are the project's standard spec list (รายการประกอบแบบ): category, area, item, size, colour, brand, model, supplier, quantity, unit and unit price, optionally per house type and linked to a material. spec_options are priced upgrade choices for an item. unit_spec_items record what one unit does differently (CHANGE, ADD, OMIT); everything else is inherited from the standard, and unit_spec_lines() returns the effective list with cost difference and buyer charge. create_spec_variation() turns a unit's draft changes into one variation order with add/omit items; lines in a live VO are locked. Staff-only, because the prices are developer cost.
+
 ## 10. Construction Domain
 work_breakdown_items provide hierarchical WBS.
 
