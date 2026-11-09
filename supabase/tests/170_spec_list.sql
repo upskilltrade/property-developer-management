@@ -75,11 +75,13 @@ begin
   vo := public.create_spec_variation(u1, null);
   perform pg_temp.t_ok((select count(*) from unit_spec_items where unit_id = u1 and status = 'IN_VO'
     and variation_order_id = vo) = 4, 'all draft lines go into the VO');
+  perform pg_temp.t_as(null); -- VO history is read through the app's RPCs, not directly
   select x2.price_delta, x2.cost_delta into r from vo_versions x2 where x2.vo_id = vo and x2.version = 1;
   perform pg_temp.t_ok(r.price_delta = 120000 + 15000 - 12000 + 35000, 'VO price is the net of the charges');
   perform pg_temp.t_ok(r.cost_delta = 110000 + 15000 - 12000 + 30000, 'VO cost is the net cost difference');
   perform pg_temp.t_ok((select count(*) from vo_items i join vo_versions v on v.id = i.vo_version_id
     where v.vo_id = vo and i.kind = 'OMIT') = 1, 'the credit is an omit item');
+  perform pg_temp.t_as(owner);
   perform pg_temp.t_refused(format('select public.cancel_unit_spec(%L)', l1), 'locked', 'line in a live VO is locked');
   perform pg_temp.t_refused(format('select public.create_spec_variation(%L, null)', u1), 'Invalid variation',
     'no second VO without new drafts');
