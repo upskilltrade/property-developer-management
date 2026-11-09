@@ -1074,6 +1074,9 @@ const en: Dictionary = {
     unitHint:
       "This unit's spec = project standard + its upgrades/changes, additions and omissions. Draft changes turn into one variation order (VO) in one click.",
     newItem: "Add item",
+    editStandard: "Edit standard",
+    editStandardHint:
+      "Edits the project standard item. Applies to every unit that has not changed it",
     editItem: "Edit item",
     remove: "Remove",
     removeHint:

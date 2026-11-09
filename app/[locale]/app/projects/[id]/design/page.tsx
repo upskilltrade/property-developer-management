@@ -366,6 +366,7 @@ export default async function ProjectDesign({
           ctx={{ locale, t, projectId: id, back }}
           units={units ?? []}
           unitId={q.unit}
+          organizationId={project.organization_id}
         />
       ) : null}
 
