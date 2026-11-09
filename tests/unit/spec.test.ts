@@ -3,6 +3,8 @@ import {
   changedFields,
   groupByCategory,
   lineAmount,
+  photoRequired,
+  photosByTarget,
   specErrorKey,
   specTotals,
   type SpecLine,
@@ -127,5 +129,17 @@ describe("spec list", () => {
     ).toBe("specDuplicate");
     expect(specErrorKey("Invalid spec")).toBe("invalid");
     expect(specErrorKey(undefined)).toBe("error");
+  });
+
+  it("knows which categories need photos and groups photos by target", () => {
+    expect(photoRequired("SANITARY")).toBe(true);
+    expect(photoRequired("STRUCTURE")).toBe(false);
+    const m = photosByTarget([
+      { item_id: "i", option_id: null, line_id: null },
+      { item_id: "i", option_id: null, line_id: null },
+      { item_id: null, option_id: "o", line_id: null },
+    ]);
+    expect(m.get("i")?.length).toBe(2);
+    expect(m.get("o")?.length).toBe(1);
   });
 });

@@ -1,5 +1,16 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { ClipboardList, FilePlus2, Pencil, Plus, Sparkles, Trash2, Undo2 } from "lucide-react";
+import {
+  Camera,
+  ClipboardList,
+  FilePlus2,
+  ImageOff,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 import { getSession } from "@/lib/auth";
 import type { Dictionary, Locale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -8,11 +19,14 @@ import {
   changedFields,
   groupByCategory,
   lineAmount,
+  photoRequired,
+  photosByTarget,
   specCategories,
   specKindTone,
   specTotals,
   type SpecLine,
 } from "@/lib/spec";
+import { cn } from "@/components/ui/cn";
 import { Panel } from "@/components/ui/panel";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -23,11 +37,15 @@ import { Field, FormGrid, Hidden, Input, Select, Textarea } from "@/components/u
 import { SubmitButton } from "@/components/ui/submit-button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PrintButton } from "@/components/ui/print-button";
+import { PhotoThumb } from "@/components/domain/photo-thumb";
+import { SpecPhotoUpload } from "@/components/domain/spec-photo-upload";
 import {
+  addSpecPhotos,
   cancelUnitSpec,
   createSpecVariation,
   removeSpecItem,
   removeSpecOption,
+  removeSpecPhoto,
   saveSpecItem,
   saveSpecOption,
   saveUnitSpec,
@@ -55,6 +73,9 @@ type Item = {
   note: string | null;
   active: boolean;
 };
+
+const ITEM_COLUMNS =
+  "id,house_type_id,item_no,seq,category,area,name,description,material_id,brand,model,color,size,supplier,quantity,unit,unit_price,warranty,note,active";
 
 type Option = {
   id: string;
@@ -89,6 +110,171 @@ type RawLine = {
 };
 
 type Ctx = { locale: Locale; t: Dictionary; projectId: string; back: string };
+
+type Photo = {
+  id: string;
+  item_id: string | null;
+  option_id: string | null;
+  line_id: string | null;
+  path: string;
+  thumb_path: string | null;
+  caption: string | null;
+  full: string;
+  thumb: string;
+};
+type Photos = Map<string, Photo[]>;
+/** Where new photos go and what they attach to. */
+type PhotoCtx = Ctx & { folder: string };
+type Supabase = Awaited<ReturnType<typeof getSession>>["supabase"];
+
+/** Spec photos of a project with signed URLs, keyed by item, option or unit line. */
+async function loadPhotos(supabase: Supabase, projectId: string): Promise<Photos> {
+  const { data } = await supabase
+    .from("spec_photos")
+    .select("id,item_id,option_id,line_id,path,thumb_path,caption")
+    .eq("project_id", projectId)
+    .order("created_at");
+  const rows = (data ?? []) as Omit<Photo, "full" | "thumb">[];
+  const paths = [...new Set(rows.flatMap((r) => [r.path, r.thumb_path ?? r.path]))];
+  const { data: signed } = paths.length
+    ? await supabase.storage.from("design-files").createSignedUrls(paths, 3600)
+    : { data: [] };
+  const url = new Map((signed ?? []).map((x) => [x.path, x.signedUrl]));
+  return photosByTarget(
+    rows.map((r) => ({
+      ...r,
+      full: url.get(r.path) ?? "",
+      thumb: url.get(r.thumb_path ?? r.path) ?? "",
+    })),
+  );
+}
+
+/** Small inline thumbnails under an item name; the full set is in the photo sheet. */
+function PhotoStrip({ photos }: { photos: Photo[] }) {
+  if (!photos.length) return null;
+  return (
+    <div className="mt-1 flex gap-1">
+      {photos.slice(0, 3).map((p) => (
+        <a key={p.id} href={p.full || undefined} target="_blank" rel="noreferrer">
+          {/* eslint-disable-next-line @next/next/no-img-element -- signed URLs expire */}
+          <img
+            src={p.thumb}
+            alt={p.caption ?? ""}
+            loading="lazy"
+            className="size-10 rounded border border-line object-cover"
+          />
+        </a>
+      ))}
+      {photos.length > 3 ? (
+        <span className="grid size-10 place-items-center rounded border border-line text-2xs text-muted">
+          +{photos.length - 3}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** A titled set of photos with remove buttons and, when a target is given, the uploader. */
+function PhotoBlock({
+  ctx,
+  title,
+  hint,
+  photos,
+  target,
+}: {
+  ctx: PhotoCtx;
+  title?: string;
+  hint?: string;
+  photos: Photo[];
+  target?: { kind: "item" | "option" | "line"; id: string };
+}) {
+  const { t, locale, back, projectId, folder } = ctx;
+  const s = t.spec;
+  return (
+    <section className="space-y-2">
+      {title ? (
+        <div>
+          <h3 className="text-[13px] font-semibold">{title}</h3>
+          {hint ? <p className="text-2xs text-muted">{hint}</p> : null}
+        </div>
+      ) : null}
+      {photos.length ? (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {photos.map((p) => (
+            <div key={p.id} className="relative">
+              <PhotoThumb thumb={p.thumb} full={p.full} caption={p.caption} />
+              {target ? (
+                <form action={removeSpecPhoto} className="absolute top-1 right-1">
+                  <Hidden values={{ locale, return_to: back, photo_id: p.id }} />
+                  <SubmitButton size="xs" variant="secondary" title={s.removePhoto}>
+                    <Trash2 />
+                  </SubmitButton>
+                </form>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-2xs text-muted">{s.noPhotos}</p>
+      )}
+      {target ? (
+        <SpecPhotoUpload
+          action={addSpecPhotos}
+          folder={folder}
+          hidden={{
+            locale,
+            return_to: back,
+            project_id: projectId,
+            target_kind: target.kind,
+            target_id: target.id,
+          }}
+          labels={{
+            takePhoto: s.takePhoto,
+            choosePhotos: s.choosePhotos,
+            uploading: s.uploading,
+            uploadFailed: s.uploadFailed,
+          }}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+/** "Photos (n)" button, or a "No photo yet" warning when the category needs one. */
+function PhotoSheet({
+  ctx,
+  title,
+  count,
+  missing,
+  children,
+}: {
+  ctx: Ctx;
+  title: string;
+  count: number;
+  missing: boolean;
+  children: ReactNode;
+}) {
+  const s = ctx.t.spec;
+  return (
+    <Sheet
+      title={title}
+      description={s.photosHint}
+      triggerLabel={
+        missing ? (
+          <span className="text-amber-700">{s.noPhoto}</span>
+        ) : (
+          `${s.photos}${count ? ` ${count}` : ""}`
+        )
+      }
+      triggerIcon={missing ? <ImageOff className="text-amber-700" /> : <Camera />}
+      triggerVariant="ghost"
+      triggerSize="xs"
+      width="lg"
+    >
+      <div className="space-y-5">{children}</div>
+    </Sheet>
+  );
+}
 
 const join = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(" · ");
 const dash = (v: string | null | undefined) => v || "—";
@@ -314,9 +500,7 @@ export async function StandardSpecView({
     await Promise.all([
       supabase
         .from("spec_items")
-        .select(
-          "id,house_type_id,item_no,seq,category,area,name,description,material_id,brand,model,color,size,supplier,quantity,unit,unit_price,warranty,note,active",
-        )
+        .select(ITEM_COLUMNS)
         .eq("project_id", projectId)
         .eq("active", true)
         .order("seq")
@@ -344,6 +528,9 @@ export async function StandardSpecView({
     ]);
   const rows = (items ?? []) as Item[];
   const opts = (options ?? []) as Option[];
+  const photos = await loadPhotos(supabase, projectId);
+  const pctx: PhotoCtx = { ...ctx, folder: `${organizationId}/${projectId}/spec` };
+  const noPhoto = rows.filter((r) => photoRequired(r.category) && !photos.get(r.id)?.length);
   const htById = new Map((houseTypes ?? []).map((h) => [h.id, h]));
   const total = rows.reduce((sum, r) => sum + (lineAmount(r.quantity, r.unit_price) ?? 0), 0);
   const unpriced = rows.filter((r) => lineAmount(r.quantity, r.unit_price) === null).length;
@@ -369,9 +556,17 @@ export async function StandardSpecView({
     >
       {rows.length ? (
         <>
+          {noPhoto.length ? (
+            <p className="flex items-center gap-2 border-b border-line bg-amber-50 px-4 py-2 text-2xs text-amber-800 print:hidden">
+              <ImageOff className="size-4" />
+              {s.missingPhotos}: <strong className="num">{noPhoto.length}</strong> ·{" "}
+              {s.missingPhotosHint}
+            </p>
+          ) : null}
           <Table>
             <THead>
               <tr>
+                <TH className="print:hidden">{t.common.actions}</TH>
                 <TH>{s.itemNo}</TH>
                 <TH>{s.name}</TH>
                 <TH>{s.size}</TH>
@@ -382,7 +577,6 @@ export async function StandardSpecView({
                 <TH align="right">{s.unitPrice}</TH>
                 <TH align="right">{s.amount}</TH>
                 <TH>{s.options}</TH>
-                <TH className="print:hidden">{t.common.actions}</TH>
               </tr>
             </THead>
             {groupByCategory(rows).map((g) => {
@@ -393,19 +587,53 @@ export async function StandardSpecView({
               return (
                 <tbody key={g.category}>
                   <tr className="bg-subtle">
-                    <td colSpan={8} className="px-3 py-1.5 text-2xs font-semibold text-ink-2">
+                    <td colSpan={9} className="px-3 py-1.5 text-2xs font-semibold text-ink-2">
                       {label(s.categories, g.category)}
                     </td>
                     <td className="num px-3 py-1.5 text-right text-2xs font-semibold">
                       {sub ? formatMoney(locale, sub) : "—"}
                     </td>
-                    <td colSpan={2} />
+                    <td />
                   </tr>
                   {g.items.map((r) => {
                     const itemOpts = opts.filter((o) => o.item_id === r.id);
                     const ht = r.house_type_id ? htById.get(r.house_type_id) : null;
                     return (
                       <TR key={r.id}>
+                        <TD className="print:hidden">
+                          <div className="flex items-center gap-1">
+                            <Sheet
+                              title={`${s.editItem} · ${r.item_no}`}
+                              triggerLabel={t.common.edit}
+                              triggerIcon={<Pencil />}
+                              triggerVariant="ghost"
+                              triggerSize="xs"
+                              width="lg"
+                            >
+                              <ItemForm
+                                ctx={ctx}
+                                item={r}
+                                houseTypes={houseTypes ?? []}
+                                materials={materials ?? []}
+                              />
+                            </Sheet>
+                            <Sheet
+                              title={`${s.remove} · ${r.item_no}`}
+                              description={s.removeHint}
+                              triggerLabel={s.remove}
+                              triggerIcon={<Trash2 />}
+                              triggerVariant="ghost"
+                              triggerSize="xs"
+                            >
+                              <form action={removeSpecItem}>
+                                <Hidden values={{ locale, return_to: back, item_id: r.id }} />
+                                <SheetFooter>
+                                  <SubmitButton variant="danger">{s.remove}</SubmitButton>
+                                </SheetFooter>
+                              </form>
+                            </Sheet>
+                          </div>
+                        </TD>
                         <TD className="font-mono text-[12px] font-semibold">{r.item_no}</TD>
                         <TD className="min-w-56 whitespace-normal">
                           {r.name}
@@ -415,6 +643,21 @@ export async function StandardSpecView({
                           {r.warranty || r.note ? (
                             <p className="text-[10px] text-faint">{join(r.warranty, r.note)}</p>
                           ) : null}
+                          <PhotoStrip photos={photos.get(r.id) ?? []} />
+                          <div className="print:hidden">
+                            <PhotoSheet
+                              ctx={ctx}
+                              title={`${s.photosTitle} · ${r.item_no} ${r.name}`}
+                              count={photos.get(r.id)?.length ?? 0}
+                              missing={noPhoto.includes(r)}
+                            >
+                              <PhotoBlock
+                                ctx={pctx}
+                                photos={photos.get(r.id) ?? []}
+                                target={{ kind: "item", id: r.id }}
+                              />
+                            </PhotoSheet>
+                          </div>
                         </TD>
                         <TD className="text-muted">{dash(r.size)}</TD>
                         <TD className="text-muted">{dash(r.color)}</TD>
@@ -464,6 +707,13 @@ export async function StandardSpecView({
                                           ? signed(locale, o.customer_price)
                                           : s.byCostDifference}
                                       </p>
+                                      <div className="mt-2">
+                                        <PhotoBlock
+                                          ctx={pctx}
+                                          photos={photos.get(o.id) ?? []}
+                                          target={{ kind: "option", id: o.id }}
+                                        />
+                                      </div>
                                     </li>
                                   ))}
                                 </ul>
@@ -474,40 +724,6 @@ export async function StandardSpecView({
                               <OptionForm ctx={ctx} itemId={r.id} />
                             </div>
                           </Sheet>
-                        </TD>
-                        <TD className="print:hidden">
-                          <div className="flex items-center gap-1">
-                            <Sheet
-                              title={`${s.editItem} · ${r.item_no}`}
-                              triggerLabel={t.common.edit}
-                              triggerIcon={<Pencil />}
-                              triggerVariant="ghost"
-                              triggerSize="xs"
-                              width="lg"
-                            >
-                              <ItemForm
-                                ctx={ctx}
-                                item={r}
-                                houseTypes={houseTypes ?? []}
-                                materials={materials ?? []}
-                              />
-                            </Sheet>
-                            <Sheet
-                              title={`${s.remove} · ${r.item_no}`}
-                              description={s.removeHint}
-                              triggerLabel={s.remove}
-                              triggerIcon={<Trash2 />}
-                              triggerVariant="ghost"
-                              triggerSize="xs"
-                            >
-                              <form action={removeSpecItem}>
-                                <Hidden values={{ locale, return_to: back, item_id: r.id }} />
-                                <SheetFooter>
-                                  <SubmitButton variant="danger">{s.remove}</SubmitButton>
-                                </SheetFooter>
-                              </form>
-                            </Sheet>
-                          </div>
                         </TD>
                       </TR>
                     );
@@ -540,10 +756,12 @@ export async function UnitSpecView({
   ctx,
   units,
   unitId,
+  organizationId,
 }: {
   ctx: Ctx;
   units: { id: string; code: string }[];
   unitId: string | undefined;
+  organizationId: string;
 }) {
   const { t, locale, projectId } = ctx;
   const s = t.spec;
@@ -553,7 +771,14 @@ export async function UnitSpecView({
   const back = `${base}&unit=${unit.id}`;
   const uctx = { ...ctx, back };
   const { supabase } = await getSession(locale);
-  const [{ data: lineData, error }, { data: options }, { data: raw }] = await Promise.all([
+  const [
+    { data: lineData, error },
+    { data: options },
+    { data: raw },
+    { data: items },
+    { data: houseTypes },
+    { data: materials },
+  ] = await Promise.all([
     supabase.rpc("unit_spec_lines", { target_unit: unit.id }),
     supabase
       .from("spec_options")
@@ -570,11 +795,27 @@ export async function UnitSpecView({
       )
       .eq("unit_id", unit.id)
       .neq("status", "CANCELLED"),
+    supabase.from("spec_items").select(ITEM_COLUMNS).eq("project_id", projectId),
+    supabase
+      .from("house_types")
+      .select("id,code,name")
+      .eq("organization_id", organizationId)
+      .eq("active", true)
+      .order("code"),
+    supabase
+      .from("materials")
+      .select("id,code,name_th,brand")
+      .eq("organization_id", organizationId)
+      .eq("active", true)
+      .order("code"),
   ]);
+  const itemById = new Map(((items ?? []) as Item[]).map((i) => [i.id, i]));
   const rawById = new Map((raw ?? []).map((r) => [r.id as string, r as RawLine]));
   const lines = (error ? [] : (lineData ?? [])) as SpecLine[];
   const opts = (options ?? []) as Option[];
   const totals = specTotals(lines);
+  const photos = await loadPhotos(supabase, projectId);
+  const pctx: PhotoCtx = { ...uctx, folder: `${organizationId}/${projectId}/spec` };
 
   return (
     <div className="space-y-4">
@@ -677,6 +918,7 @@ export async function UnitSpecView({
           <Table>
             <THead>
               <tr>
+                <TH className="print:hidden">{t.common.actions}</TH>
                 <TH>{s.itemNo}</TH>
                 <TH>{s.name}</TH>
                 <TH>{s.specColumn}</TH>
@@ -686,7 +928,6 @@ export async function UnitSpecView({
                 <TH align="right">{s.costDelta}</TH>
                 <TH align="right">{s.charge}</TH>
                 <TH>{t.common.status}</TH>
-                <TH className="print:hidden">{t.common.actions}</TH>
               </tr>
             </THead>
             {groupByCategory(lines).map((g) => (
@@ -704,6 +945,11 @@ export async function UnitSpecView({
                     line={l}
                     options={opts.filter((o) => o.item_id === l.base_item_id)}
                     raw={l.line_id ? rawById.get(l.line_id) : undefined}
+                    std={l.base_item_id ? itemById.get(l.base_item_id) : undefined}
+                    houseTypes={houseTypes ?? []}
+                    materials={materials ?? []}
+                    photos={photos}
+                    pctx={pctx}
                   />
                 ))}
               </tbody>
@@ -723,16 +969,31 @@ function UnitLine({
   line: l,
   options,
   raw,
+  std,
+  houseTypes,
+  materials,
+  photos,
+  pctx,
 }: {
   ctx: Ctx;
   unitId: string;
   line: SpecLine;
   options: Option[];
   raw?: RawLine;
+  std?: Item;
+  houseTypes: { id: string; code: string; name: string }[];
+  materials: { id: string; code: string; name_th: string; brand: string | null }[];
+  photos: Photos;
+  pctx: PhotoCtx;
 }) {
   const { t, locale, projectId, back } = ctx;
   const s = t.spec;
   const was = changedFields(l);
+  const stdPhotos = l.base_item_id ? (photos.get(l.base_item_id) ?? []) : [];
+  const optPhotos = l.option_id ? (photos.get(l.option_id) ?? []) : [];
+  const ownPhotos = l.line_id ? (photos.get(l.line_id) ?? []) : [];
+  const shown = ownPhotos.length ? ownPhotos : optPhotos.length ? optPhotos : stdPhotos;
+  const allCount = stdPhotos.length + optPhotos.length + ownPhotos.length;
   const canChange = l.kind === "STANDARD" || l.editable;
   const fieldLabel: Record<string, string> = {
     brand: s.brand,
@@ -742,58 +1003,23 @@ function UnitLine({
     supplier: s.supplier,
   };
   return (
-    <TR className={l.kind === "OMIT" ? "text-muted line-through decoration-faint" : undefined}>
-      <TD className="font-mono text-[12px] font-semibold">{l.kind === "ADD" ? "+" : l.item_no}</TD>
-      <TD className="min-w-56 whitespace-normal">
-        {l.name}
-        <p className="text-2xs text-muted">{join(l.area, l.description)}</p>
-        {l.option_name ? (
-          <p className="text-2xs text-brand">
-            {s.option}: {l.option_name}
-          </p>
-        ) : null}
-      </TD>
-      <TD className="min-w-44 whitespace-normal">
-        {dash(join(l.brand, l.model, l.color, l.size))}
-        {l.supplier ? <p className="text-2xs text-muted">{l.supplier}</p> : null}
-        {was.length ? (
-          <p className="text-[10px] text-faint">
-            {s.was}: {was.map((w) => `${fieldLabel[w.field]} ${w.was ?? "—"}`).join(" · ")}
-          </p>
-        ) : null}
-      </TD>
-      <TD align="right" className="num">
-        {l.quantity !== null ? formatNumber(locale, l.quantity, 2) : "—"}{" "}
-        <span className="text-2xs text-muted">{l.unit}</span>
-      </TD>
-      <TD align="right">{money(locale, l.unit_price)}</TD>
-      <TD align="right" className="font-medium">
-        {money(locale, l.amount)}
-      </TD>
-      <TD align="right">{l.kind === "STANDARD" ? "—" : signed(locale, l.cost_delta)}</TD>
-      <TD align="right" className="font-medium">
-        {l.kind === "STANDARD" ? "—" : signed(locale, l.charge)}
-      </TD>
-      <TD>
-        <div className="flex flex-col items-start gap-0.5">
-          <Badge tone={specKindTone[l.kind] ?? "neutral"}>{label(s.kinds, l.kind)}</Badge>
-          {l.kind !== "STANDARD" ? (
-            l.variation_order_id && !l.editable ? (
-              <Link
-                href={`/${locale}/app/projects/${projectId}/changes/${l.variation_order_id}`}
-                className="text-2xs text-brand hover:underline"
-              >
-                {l.vo_no} · {label(t.status.vo, l.vo_status ?? "")}
-              </Link>
-            ) : (
-              <span className="text-2xs text-muted">{s.statuses.DRAFT}</span>
-            )
-          ) : null}
-        </div>
-      </TD>
+    <TR className={l.kind === "OMIT" ? "text-muted" : undefined}>
       <TD className="print:hidden">
         {canChange ? (
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
+            {std ? (
+              <Sheet
+                title={`${s.editItem} · ${std.item_no}`}
+                description={s.editStandardHint}
+                triggerLabel={s.editStandard}
+                triggerIcon={<Pencil />}
+                triggerVariant="ghost"
+                triggerSize="xs"
+                width="lg"
+              >
+                <ItemForm ctx={ctx} item={std} houseTypes={houseTypes} materials={materials} />
+              </Sheet>
+            ) : null}
             {l.kind !== "OMIT" ? (
               <Sheet
                 title={`${l.kind === "ADD" ? t.common.edit : s.upgrade} · ${l.name}`}
@@ -925,8 +1151,110 @@ function UnitLine({
             ) : null}
           </div>
         ) : (
-          <span className="text-2xs text-faint">{s.locked}</span>
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-2xs text-faint">{s.locked}</span>
+            {std ? (
+              <Sheet
+                title={`${s.editItem} · ${std.item_no}`}
+                description={s.editStandardHint}
+                triggerLabel={s.editStandard}
+                triggerIcon={<Pencil />}
+                triggerVariant="ghost"
+                triggerSize="xs"
+                width="lg"
+              >
+                <ItemForm ctx={ctx} item={std} houseTypes={houseTypes} materials={materials} />
+              </Sheet>
+            ) : null}
+          </div>
         )}
+      </TD>
+      <TD className="font-mono text-[12px] font-semibold">{l.kind === "ADD" ? "+" : l.item_no}</TD>
+      <TD
+        className={cn(
+          "min-w-56 whitespace-normal",
+          l.kind === "OMIT" && "line-through decoration-faint",
+        )}
+      >
+        {l.name}
+        <p className="text-2xs text-muted">{join(l.area, l.description)}</p>
+        {l.option_name ? (
+          <p className="text-2xs text-brand">
+            {s.option}: {l.option_name}
+          </p>
+        ) : null}
+        {l.kind !== "OMIT" ? (
+          <>
+            <PhotoStrip photos={shown} />
+            <div className="print:hidden">
+              <PhotoSheet
+                ctx={ctx}
+                title={`${s.photosTitle} · ${l.name}`}
+                count={allCount}
+                missing={photoRequired(l.category) && !allCount}
+              >
+                {l.line_id ? (
+                  <PhotoBlock
+                    ctx={pctx}
+                    title={s.unitPhotos}
+                    hint={s.unitPhotosHint}
+                    photos={ownPhotos}
+                    target={l.editable ? { kind: "line", id: l.line_id } : undefined}
+                  />
+                ) : null}
+                {l.option_id ? (
+                  <PhotoBlock ctx={pctx} title={l.option_name ?? s.option} photos={optPhotos} />
+                ) : null}
+                {l.base_item_id ? (
+                  <PhotoBlock
+                    ctx={pctx}
+                    title={s.standardPhotos}
+                    photos={stdPhotos}
+                    target={l.line_id ? undefined : { kind: "item", id: l.base_item_id }}
+                  />
+                ) : null}
+              </PhotoSheet>
+            </div>
+          </>
+        ) : null}
+      </TD>
+      <TD className="min-w-44 whitespace-normal">
+        {dash(join(l.brand, l.model, l.color, l.size))}
+        {l.supplier ? <p className="text-2xs text-muted">{l.supplier}</p> : null}
+        {was.length ? (
+          <p className="text-[10px] text-faint">
+            {s.was}: {was.map((w) => `${fieldLabel[w.field]} ${w.was ?? "—"}`).join(" · ")}
+          </p>
+        ) : null}
+      </TD>
+      <TD align="right" className="num">
+        {l.quantity !== null ? formatNumber(locale, l.quantity, 2) : "—"}{" "}
+        <span className="text-2xs text-muted">{l.unit}</span>
+      </TD>
+      <TD align="right">{money(locale, l.unit_price)}</TD>
+      <TD align="right" className="font-medium">
+        {money(locale, l.amount)}
+      </TD>
+      <TD align="right">{l.kind === "STANDARD" ? "—" : signed(locale, l.cost_delta)}</TD>
+      <TD align="right" className="font-medium">
+        {l.kind === "STANDARD" ? "—" : signed(locale, l.charge)}
+      </TD>
+      <TD>
+        <div className="flex flex-col items-start gap-0.5">
+          <Badge tone={specKindTone[l.kind] ?? "neutral"}>{label(s.kinds, l.kind)}</Badge>
+          {l.kind !== "STANDARD" ? (
+            l.variation_order_id && !l.editable ? (
+              <Link
+                href={`/${locale}/app/projects/${projectId}/changes/${l.variation_order_id}`}
+                className="text-2xs text-brand hover:underline"
+              >
+                {l.vo_no} · {label(t.status.vo, l.vo_status ?? "")}
+              </Link>
+            ) : (
+              <span className="text-2xs text-muted">{s.statuses.DRAFT}</span>
+            )
+          ) : null}
+        </div>
       </TD>
     </TR>
   );

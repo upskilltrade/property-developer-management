@@ -110,3 +110,27 @@ export async function createSpecVariation(fd: FormData) {
     data ? `/${locale}/app/projects/${str(fd, "project_id")}/changes/${data}` : undefined,
   );
 }
+
+/** Records photos already uploaded to design-files/<org>/<project>/spec/ against one target. */
+export async function addSpecPhotos(fd: FormData) {
+  const { supabase, finish } = await context(fd);
+  const kind = str(fd, "target_kind");
+  let photos: unknown = [];
+  try {
+    photos = JSON.parse(str(fd, "photos") || "[]");
+  } catch {
+    photos = [];
+  }
+  const { error } = await supabase.rpc("add_spec_photos", {
+    target_project: str(fd, "project_id"),
+    target: { [`${kind}_id`]: str(fd, "target_id") },
+    photos,
+  });
+  finish(error, "specPhoto");
+}
+
+export async function removeSpecPhoto(fd: FormData) {
+  const { supabase, finish } = await context(fd);
+  const { error } = await supabase.rpc("remove_spec_photo", { target_photo: str(fd, "photo_id") });
+  finish(error, "specPhoto");
+}

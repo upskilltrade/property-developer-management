@@ -1074,6 +1074,25 @@ const en: Dictionary = {
     unitHint:
       "This unit's spec = project standard + its upgrades/changes, additions and omissions. Draft changes turn into one variation order (VO) in one click.",
     newItem: "Add item",
+    editStandard: "Edit standard",
+    editStandardHint:
+      "Edits the project standard item. Applies to every unit that has not changed it",
+    photos: "Photos",
+    photosTitle: "Sample photos",
+    photosHint:
+      "Take a photo on your phone or pick files from the computer. They are resized and uploaded straight away",
+    takePhoto: "Take photo",
+    choosePhotos: "Choose photos",
+    uploading: "Uploading",
+    uploadFailed: "Upload failed, tap to retry",
+    noPhoto: "No photo yet",
+    noPhotos: "No photos for this item yet",
+    missingPhotos: "Items without a photo",
+    missingPhotosHint: "Only categories that need photos",
+    standardPhotos: "Project standard photos",
+    unitPhotos: "This unit's photos",
+    unitPhotosHint: "For upgraded, changed or added items",
+    removePhoto: "Remove photo",
     editItem: "Edit item",
     remove: "Remove",
     removeHint:

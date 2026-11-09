@@ -166,3 +166,35 @@ export function specErrorKey(message: string | undefined) {
   if (/Invalid|required/.test(message)) return "invalid";
   return "error";
 }
+
+/** Categories where buyers choose by look, so every standard item should carry a photo. */
+export const photoRequiredCategories: readonly SpecCategory[] = [
+  "ROOF",
+  "WALL",
+  "FLOOR",
+  "CEILING",
+  "DOOR_WINDOW",
+  "SANITARY",
+  "KITCHEN",
+  "LIGHTING",
+  "AIRCON",
+  "POOL",
+  "EXTERIOR",
+  "FURNITURE",
+];
+
+export function photoRequired(category: string) {
+  return (photoRequiredCategories as readonly string[]).includes(category);
+}
+
+/** Groups photo rows by the item, option or unit line they belong to. */
+export function photosByTarget<
+  T extends { item_id: string | null; option_id: string | null; line_id: string | null },
+>(photos: T[]) {
+  const map = new Map<string, T[]>();
+  for (const p of photos) {
+    const key = p.item_id ?? p.option_id ?? p.line_id;
+    if (key) map.set(key, [...(map.get(key) ?? []), p]);
+  }
+  return map;
+}
