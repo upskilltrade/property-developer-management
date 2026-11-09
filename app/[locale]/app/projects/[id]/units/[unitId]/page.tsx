@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarRange, Pencil, Trash2, Wallet } from "lucide-react";
+import { ArrowLeft, CalendarRange, ClipboardList, Pencil, Trash2, Wallet } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
 import { label } from "@/lib/i18n/label";
@@ -193,6 +193,13 @@ export default async function Unit360({
         >
           <CalendarRange className="size-4" />
           {t.nav.schedule}
+        </Link>
+        <Link
+          href={`/${locale}/app/projects/${id}/design?view=unitspec&unit=${unitId}`}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 text-[13px] font-medium hover:bg-subtle"
+        >
+          <ClipboardList className="size-4" />
+          {t.spec.views.unit}
         </Link>
       </div>
 
