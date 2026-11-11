@@ -23,9 +23,16 @@ import {
   parseColors,
   parseTags,
   pickMany,
+  uniqueCode,
 } from "@/lib/marketing";
 import { officeText } from "@/lib/office-text";
-import { draftCampaign, draftMarketingPlan, type PlanFile } from "@/lib/marketing-ai";
+import {
+  draftCampaign,
+  draftMarketingPlan,
+  structurePlan,
+  suggestCampaigns,
+  type PlanFile,
+} from "@/lib/marketing-ai";
 
 const BUCKET = "marketing-files";
 
@@ -35,7 +42,9 @@ async function context(fd: FormData) {
   const projectId = str(fd, "project_id");
   const base = `/${locale}/app/projects/${projectId}/marketing`;
   const requested = str(fd, "return_to");
-  const back = requested.startsWith(base) ? requested : base;
+  // The presentation deck lives outside the app shell, at /report/marketing/<project>.
+  const deck = `/${locale}/report/marketing/${projectId}`;
+  const back = requested.startsWith(base) || requested === deck ? requested : base;
   const supabase = await createClient();
   const {
     data: { user },
@@ -446,6 +455,42 @@ async function projectFacts(supabase: Client, projectId: string) {
   return facts;
 }
 
+type PlanRow = Record<string, unknown> | null;
+const txt = (v: unknown) => (v == null || v === "" ? null : String(v));
+
+/** The plan's fields as plain prompt lines for the campaign AI. */
+function planBrief(plan: PlanRow, full = false): Record<string, string | number | null> {
+  const colors = ((plan?.brand_colors ?? []) as { name?: string; hex?: string }[])
+    .map((c) => `${c.name ?? ""} ${c.hex ?? ""}`.trim())
+    .join(", ");
+  return {
+    project_brief: txt(plan?.raw_brief)?.slice(0, 6000) ?? null,
+    tagline: txt(plan?.tagline),
+    location: txt(plan?.location_text),
+    website: txt(plan?.website_url),
+    target_audience: txt(plan?.target_audience),
+    personas: txt(plan?.personas),
+    selling_points: txt(plan?.usp),
+    key_message: txt(plan?.key_message),
+    positioning: txt(plan?.positioning),
+    competitors: txt(plan?.competitors),
+    brand_tone: txt(plan?.brand_tone),
+    ...(full
+      ? {
+          brand_fonts: txt(plan?.brand_fonts),
+          brand_colors: colors || null,
+          budget_total_baht: (plan?.budget_total as number | null) ?? null,
+          goal_leads: (plan?.goal_leads as number | null) ?? null,
+          goal_bookings: (plan?.goal_bookings as number | null) ?? null,
+          goal_sales_value_baht: (plan?.goal_sales_value as number | null) ?? null,
+          plan_start: txt(plan?.start_date),
+          plan_end: txt(plan?.end_date),
+          notes: txt(plan?.notes),
+        }
+      : {}),
+  };
+}
+
 /**
  * Asks the AI for a campaign concept and copies, using the project's real units, house types,
  * spec highlights and marketing plan. The concept replaces the campaign's; copies are added as
@@ -474,19 +519,7 @@ export async function draftCampaignWithAi(fd: FormData) {
     const result = await draftCampaign({
       project: { name: project.name, code: project.code },
       facts,
-      plan: {
-        project_brief: plan?.raw_brief?.slice(0, 6000) ?? null,
-        tagline: plan?.tagline ?? null,
-        location: plan?.location_text ?? null,
-        website: plan?.website_url ?? null,
-        target_audience: plan?.target_audience ?? null,
-        personas: plan?.personas ?? null,
-        selling_points: plan?.usp ?? null,
-        key_message: plan?.key_message ?? null,
-        positioning: plan?.positioning ?? null,
-        competitors: plan?.competitors ?? null,
-        brand_tone: plan?.brand_tone ?? null,
-      },
+      plan: planBrief(plan),
       campaign: {
         name: campaign!.name,
         objective: campaign!.objective,
@@ -725,4 +758,167 @@ export async function draftPlanWithAi(fd: FormData) {
   });
   if (errorKey) fail(errorKey);
   finish(null, "aiPlan");
+}
+
+/** The flash key for a failed AI run: a database error or an AI error. */
+const aiFailureKey = (e: unknown) =>
+  e && typeof e === "object" && "code" in e && !(e instanceof Error)
+    ? marketingErrorKey((e as { message?: string }).message)
+    : `ai_${aiErrorKey(e)}`;
+
+async function requireAiEditor(supabase: Client, projectId: string, fail: (key: string) => never) {
+  if (!aiConfigured()) fail("ai_not_configured");
+  const { data: canEdit } = await supabase.rpc("can_market", {
+    target_project: projectId,
+    target_action: "EDIT",
+  });
+  if (!canEdit) fail("permission");
+}
+
+// ---------------------------------------------------------------- presentation
+
+/** Restructures the saved plan into the presentation deck (personas, budget mix, roadmap ...). */
+export async function buildPresentation(fd: FormData) {
+  const { supabase, project, fail, finish } = await context(fd);
+  await requireAiEditor(supabase, project.id, fail);
+  const [{ data: plan }, facts] = await Promise.all([
+    supabase.from("marketing_plans").select("*").eq("project_id", project.id).maybeSingle(),
+    projectFacts(supabase, project.id),
+  ]);
+  const brief = planBrief(plan, true);
+  if (!brief.target_audience && !brief.personas && !brief.usp && !brief.key_message)
+    fail("ai_no_input");
+
+  let errorKey: string | null = null;
+  let errorText = "";
+  let usage = { input_tokens: 0, output_tokens: 0 };
+  try {
+    const result = await structurePlan({
+      project: { name: project.name, code: project.code },
+      facts,
+      plan: brief,
+    });
+    usage = result.usage;
+    const { error } = await supabase
+      .from("marketing_plans")
+      .update({ presentation: result.presentation, presentation_at: new Date().toISOString() })
+      .eq("project_id", project.id);
+    if (error) throw error;
+  } catch (e) {
+    console.error("marketing AI presentation failed", e);
+    errorText = errorDetail(e);
+    errorKey = aiFailureKey(e);
+  }
+  await supabase.rpc("log_assistant_turn", {
+    question_text: `[marketing-deck] ${project.code}${errorText}`,
+    tools_used: ["marketing"],
+    tokens_in: usage.input_tokens,
+    tokens_out: usage.output_tokens,
+    stop: errorKey ? "error" : "end_turn",
+  });
+  if (errorKey) fail(errorKey);
+  finish(null, "deck");
+}
+
+// ---------------------------------------------------------------- campaigns per target group
+
+/**
+ * Plans one campaign per target group with the AI: each one gets its brief, targeting, budget
+ * share, goals, concept and a few starter copies, all as drafts for the team to review.
+ */
+export async function suggestCampaignsWithAi(fd: FormData) {
+  const { supabase, user, project, base, fail, finish } = await context(fd);
+  await requireAiEditor(supabase, project.id, fail);
+  const [{ data: plan }, { data: existing }, facts] = await Promise.all([
+    supabase.from("marketing_plans").select("*").eq("project_id", project.id).maybeSingle(),
+    supabase
+      .from("marketing_campaigns")
+      .select("code,name,audience,status")
+      .eq("project_id", project.id),
+    projectFacts(supabase, project.id),
+  ]);
+  const brief = planBrief(plan, true);
+  if (!brief.target_audience && !brief.personas) fail("ai_no_segments");
+
+  let errorKey: string | null = null;
+  let errorText = "";
+  let made = 0;
+  let usage = { input_tokens: 0, output_tokens: 0 };
+  try {
+    const result = await suggestCampaigns({
+      project: { name: project.name, code: project.code },
+      facts,
+      plan: brief,
+      existing: (existing ?? [])
+        .filter((c) => c.status !== "CANCELLED")
+        .map((c) => [c.code, c.name, c.audience].filter(Boolean).join(" · ")),
+      extra: optStr(fd, "instructions"),
+    });
+    usage = result.usage;
+    const taken = new Set((existing ?? []).map((c) => c.code));
+    const day = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+    const whole = (n: number | null) => (n != null && n >= 0 ? Math.round(n) : null);
+    for (const c of result.campaigns) {
+      const code = uniqueCode(c.code, taken);
+      let start = day(c.start_date);
+      let end = day(c.end_date);
+      if (start && end && end < start) [start, end] = [null, null];
+      const { data: row, error } = await supabase
+        .from("marketing_campaigns")
+        .insert({
+          organization_id: project.organization_id,
+          project_id: project.id,
+          code,
+          name: c.name.slice(0, 200) || c.segment.slice(0, 200),
+          objective: c.objective,
+          status: "DRAFT",
+          start_date: start,
+          end_date: end,
+          budget: whole(c.budget),
+          audience: `${c.segment}: ${c.audience}`,
+          key_message: c.key_message,
+          offer: c.offer,
+          channels: pickMany(channels, c.channels),
+          languages: pickMany(copyLanguages, c.languages),
+          lead_tag: code,
+          goal_leads: whole(c.goal_leads),
+          goal_bookings: whole(c.goal_bookings),
+          concept: c.concept,
+          notes: [`กลุ่มเป้าหมาย: ${c.segment}`, `การยิงแอด: ${c.targeting}`, c.rationale]
+            .filter(Boolean)
+            .join("\n\n"),
+          created_by: user.id,
+        })
+        .select("id")
+        .single();
+      if (error || !row) throw error ?? new Error("campaign insert failed");
+      made++;
+      if (c.copies.length) {
+        const { error: copyError } = await supabase.from("marketing_copies").insert(
+          c.copies.slice(0, 4).map((x) => ({
+            ...x,
+            organization_id: project.organization_id,
+            project_id: project.id,
+            campaign_id: row.id,
+            source: "AI",
+            created_by: user.id,
+          })),
+        );
+        if (copyError) throw copyError;
+      }
+    }
+  } catch (e) {
+    console.error("marketing AI campaign set failed", e);
+    errorText = errorDetail(e);
+    errorKey = aiFailureKey(e);
+  }
+  await supabase.rpc("log_assistant_turn", {
+    question_text: `[marketing-campaigns] ${project.code} (${made} campaigns)${errorText}`,
+    tools_used: ["marketing"],
+    tokens_in: usage.input_tokens,
+    tokens_out: usage.output_tokens,
+    stop: errorKey ? "error" : "end_turn",
+  });
+  if (errorKey && !made) fail(errorKey);
+  finish(null, "aiCampaigns", `${base}?view=campaigns`);
 }

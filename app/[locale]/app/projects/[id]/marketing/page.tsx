@@ -10,6 +10,7 @@ import {
   Megaphone,
   Palette,
   Pencil,
+  Presentation,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -33,6 +34,7 @@ import {
   type LeadStatRow,
 } from "@/lib/marketing";
 import { Panel } from "@/components/ui/panel";
+import { buttonClass } from "@/components/ui/button";
 import { Tabs } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Kpi, KpiStrip } from "@/components/ui/kpi";
@@ -51,7 +53,7 @@ import {
   setAssetStatus,
   updateAsset,
 } from "./actions";
-import { assetTone, campaignTone, CampaignForm } from "./parts";
+import { assetTone, campaignTone, CampaignForm, CampaignSetSheet, targetGroups } from "./parts";
 import { PlanSteps } from "./plan-steps";
 import { aiConfigured } from "@/lib/ai";
 
@@ -129,7 +131,7 @@ export default async function ProjectMarketing({
     supabase
       .from("marketing_campaigns")
       .select(
-        "id,code,name,objective,status,start_date,end_date,budget,channels,lead_tag,goal_leads,goal_bookings",
+        "id,code,name,objective,status,start_date,end_date,budget,channels,lead_tag,goal_leads,goal_bookings,audience",
       )
       .eq("project_id", id)
       .order("start_date", { ascending: false, nullsFirst: true }),
@@ -410,6 +412,17 @@ export default async function ProjectMarketing({
           <Panel
             title={canEdit ? m.plan.steps.review : m.views.plan}
             description={plan?.updated_at ? formatDate(locale, plan.updated_at) : undefined}
+            actions={
+              plan ? (
+                <Link
+                  href={`/${locale}/report/marketing/${id}`}
+                  className={buttonClass("primary", "xs")}
+                >
+                  <Presentation />
+                  {m.deck.open}
+                </Link>
+              ) : null
+            }
           >
             {canEdit ? (
               <form action={savePlan} className="space-y-6 p-4">
@@ -686,18 +699,28 @@ export default async function ProjectMarketing({
           title={m.views.campaigns}
           actions={
             canEdit ? (
-              <Sheet
-                title={m.campaigns.new}
-                triggerLabel={m.campaigns.new}
-                triggerSize="xs"
-                width="lg"
-              >
-                <CampaignForm
-                  t={t}
-                  action={saveCampaign}
-                  hidden={{ locale, return_to: back, project_id: id }}
-                />
-              </Sheet>
+              <div className="flex flex-wrap gap-2">
+                {aiConfigured() ? (
+                  <CampaignSetSheet
+                    t={t}
+                    hidden={{ locale, return_to: back, project_id: id }}
+                    groups={targetGroups(plan)}
+                  />
+                ) : null}
+                <Sheet
+                  title={m.campaigns.new}
+                  triggerLabel={m.campaigns.new}
+                  triggerSize="xs"
+                  triggerVariant="secondary"
+                  width="lg"
+                >
+                  <CampaignForm
+                    t={t}
+                    action={saveCampaign}
+                    hidden={{ locale, return_to: back, project_id: id }}
+                  />
+                </Sheet>
+              </div>
             ) : null
           }
         >
@@ -725,6 +748,11 @@ export default async function ProjectMarketing({
                           {c.name}
                         </Link>
                         <div className="font-mono text-2xs text-muted">{c.code}</div>
+                        {c.audience ? (
+                          <div className="line-clamp-2 max-w-72 text-2xs text-muted">
+                            {c.audience}
+                          </div>
+                        ) : null}
                       </TD>
                       <TD>{label(m.campaigns.objective, c.objective)}</TD>
                       <TD>

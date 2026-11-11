@@ -158,7 +158,96 @@ export const oneOf = <T extends string>(list: readonly T[], v: string | null | u
 export const pickMany = <T extends string>(list: readonly T[], values: readonly string[]) =>
   list.filter((x) => values.includes(x));
 
+/** A campaign code not used yet in the project ("EU-RETIREE", then "EU-RETIREE-2" ...); adds it to taken. */
+export function uniqueCode(wanted: string, taken: Set<string>) {
+  const base =
+    wanted
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 30) || "CAMPAIGN";
+  let code = base;
+  for (let n = 2; taken.has(code); n++) code = `${base}-${n}`;
+  taken.add(code);
+  return code;
+}
+
+/**
+ * Group names from free text: "Persona 1: Hans, 64, German retiree — ..." gives "Hans, 64, German
+ * retiree"; otherwise each short line or bullet. At most 6.
+ */
+export function personaNames(text: string) {
+  const heads = [
+    ...text.matchAll(/(?:^|\n)\s*(?:persona|เพอร์โซนา|กลุ่ม(?:ที่)?)\s*\d+\s*[:.)–-]\s*([^\n]+)/gi),
+  ];
+  const pick = heads.length
+    ? heads.map((m) => m[1])
+    : text.split(/\n/).map((l) => l.replace(/^\s*(?:[-•*]|\d+[.)])\s*/, ""));
+  return pick
+    .map((l) => l.split(/\s[—–]\s|:\s/)[0].trim())
+    .filter((l) => l.length > 1 && l.length <= 120)
+    .slice(0, 6);
+}
+
+/** Shares of a budget mix scaled to add up to 100 (the AI's percentages can drift). */
+export function normalizeShares<T extends { pct: number }>(rows: T[]) {
+  const clean = rows.filter((r) => Number.isFinite(r.pct) && r.pct > 0);
+  const sum = clean.reduce((s, r) => s + r.pct, 0);
+  return sum > 0 ? clean.map((r) => ({ ...r, pct: (r.pct / sum) * 100 })) : [];
+}
+
+/** A Google Fonts stylesheet URL for brand font names, or null when none look valid. */
+export function googleFontsUrl(names: (string | null | undefined)[]) {
+  const families = [
+    ...new Set(
+      names
+        .map((n) =>
+          (n ?? "")
+            .replace(/[^A-Za-z0-9 ]/g, "")
+            .trim()
+            .replace(/\s+/g, " "),
+        )
+        .filter((n) => n.length >= 2 && n.length <= 40),
+    ),
+  ];
+  if (!families.length) return null;
+  return `https://fonts.googleapis.com/css2?${families
+    .map((f) => `family=${f.replace(/ /g, "+")}:wght@400;600;700`)
+    .join("&")}&display=swap`;
+}
+
 export type BrandColor = { name: string; hex: string };
+
+/** Relative luminance of a #rrggbb colour, 0 (black) .. 1 (white). */
+export function luminance(hex: string) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return 0;
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const c = parseInt(m[1].slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * Deck colours from the brand palette: the darkest colour for dark slides, the most saturated
+ * other colour as accent, and a light tint for light slides. Falls back to navy and gold.
+ */
+export function deckPalette(colors: BrandColor[]) {
+  const valid = colors.filter((c) => /^#[0-9a-f]{6}$/i.test(c.hex));
+  const byDark = [...valid].sort((a, b) => luminance(a.hex) - luminance(b.hex));
+  const dark = byDark[0] && luminance(byDark[0].hex) < 0.2 ? byDark[0].hex : "#1f3a5f";
+  const sat = (hex: string) => {
+    const v = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    return Math.max(...v) - Math.min(...v);
+  };
+  const accent =
+    [...valid]
+      .filter((c) => c.hex !== dark && luminance(c.hex) > 0.08 && luminance(c.hex) < 0.75)
+      .sort((a, b) => sat(b.hex) - sat(a.hex))[0]?.hex ?? "#c9a86a";
+  const light = byDark.reverse().find((c) => luminance(c.hex) > 0.8)?.hex ?? "#f6f3ee";
+  return { dark, accent, light, onAccent: luminance(accent) > 0.45 ? "#111111" : "#ffffff" };
+}
 
 /**
  * Brand colours typed one per line: "Primary #1F3A5F", "#C9A86A Gold" or just "#fff".
