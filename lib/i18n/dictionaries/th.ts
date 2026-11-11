@@ -2653,7 +2653,8 @@ const th = {
         upload: "อัปโหลดไฟล์ข้อมูลโครงการ",
         files: "ไฟล์ที่ AI จะอ่าน",
         noFiles: "ยังไม่มีไฟล์ อัปโหลดไฟล์ข้อมูลโครงการ หรือไฟล์ CI/โลโก้/โบรชัวร์ในคลังแบรนด์",
-        unreadable: "AI อ่านไม่ได้ (ใช้ได้: รูป JPG/PNG/WebP ≤5MB, PDF ≤18MB, SVG/TXT/CSV)",
+        unreadable:
+          "AI อ่านไม่ได้ (ใช้ได้: รูป JPG/PNG/WebP ≤5MB, PDF ≤18MB, Word/PowerPoint/Excel, SVG/TXT/CSV)",
       },
       ai: {
         button: "AI วิเคราะห์สร้างแผนการตลาด",

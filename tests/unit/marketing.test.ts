@@ -91,6 +91,13 @@ describe("marketing helpers", () => {
     expect(aiReadable("image/svg+xml", "logo.svg", 20_000)).toBe("text");
     expect(aiReadable("application/postscript", "logo.ai", 1000)).toBeNull();
     expect(aiReadable("", "brief.txt", 500)).toBe("text");
+    expect(
+      aiReadable(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "spec.docx",
+        263754,
+      ),
+    ).toBe("office");
     expect(imageMediaType("", "a.PNG".toLowerCase())).toBe("image/png");
     expect(imageMediaType("image/webp", "x")).toBe("image/webp");
   });

@@ -24,6 +24,7 @@ import {
   parseTags,
   pickMany,
 } from "@/lib/marketing";
+import { officeText } from "@/lib/office-text";
 import { draftCampaign, draftMarketingPlan, type PlanFile } from "@/lib/marketing-ai";
 
 const BUCKET = "marketing-files";
@@ -467,6 +468,7 @@ export async function draftCampaignWithAi(fd: FormData) {
   if (!canEdit) fail("permission");
 
   let errorKey: string | null = null;
+  let errorText = "";
   let usage = { input_tokens: 0, output_tokens: 0 };
   try {
     const result = await draftCampaign({
@@ -519,13 +521,14 @@ export async function draftCampaignWithAi(fd: FormData) {
     }
   } catch (e) {
     console.error("marketing AI draft failed", e);
+    errorText = errorDetail(e);
     errorKey =
       e && typeof e === "object" && "code" in e && !(e instanceof Error)
         ? marketingErrorKey((e as { message?: string }).message)
         : `ai_${aiErrorKey(e)}`;
   }
   await supabase.rpc("log_assistant_turn", {
-    question_text: `[marketing-draft] ${campaign!.code}`,
+    question_text: `[marketing-draft] ${campaign!.code}${errorText}`,
     tools_used: ["marketing"],
     tokens_in: usage.input_tokens,
     tokens_out: usage.output_tokens,
@@ -551,6 +554,10 @@ export async function saveRawBrief(fd: FormData) {
   );
   finish(error, "plan");
 }
+
+/** A short error note for the AI usage log, so a failed run can be diagnosed later. */
+const errorDetail = (e: unknown) =>
+  ` · ERROR: ${(e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e)).slice(0, 300)}`;
 
 const MAX_AI_FILES = 10;
 // Base64 grows files by a third; the API takes about 32 MB per request.
@@ -614,6 +621,10 @@ export async function draftPlanWithAi(fd: FormData) {
     bytes += blob.size;
     if (kind === "text") {
       files.push({ name, kind, text: (await blob.text()).slice(0, 60_000) });
+    } else if (kind === "office") {
+      const text = officeText(Buffer.from(await blob.arrayBuffer()), f.file_name ?? "");
+      if (text) files.push({ name, kind: "text", text });
+      else skipped.push(a.title);
     } else {
       const data = Buffer.from(await blob.arrayBuffer()).toString("base64");
       files.push(
@@ -626,6 +637,7 @@ export async function draftPlanWithAi(fd: FormData) {
   if (!files.length && !rawBrief && !facts.length) fail("ai_no_input");
 
   let errorKey: string | null = null;
+  let errorText = "";
   let usage = { input_tokens: 0, output_tokens: 0 };
   try {
     const current = plan
@@ -698,13 +710,14 @@ export async function draftPlanWithAi(fd: FormData) {
     if (error) throw error;
   } catch (e) {
     console.error("marketing AI plan failed", e);
+    errorText = errorDetail(e);
     errorKey =
       e && typeof e === "object" && "code" in e && !(e instanceof Error)
         ? marketingErrorKey((e as { message?: string }).message)
         : `ai_${aiErrorKey(e)}`;
   }
   await supabase.rpc("log_assistant_turn", {
-    question_text: `[marketing-plan] ${project.code} (${files.length} files)`,
+    question_text: `[marketing-plan] ${project.code} (${files.length} files)${errorText}`,
     tools_used: ["marketing"],
     tokens_in: usage.input_tokens,
     tokens_out: usage.output_tokens,

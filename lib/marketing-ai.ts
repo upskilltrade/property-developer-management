@@ -70,7 +70,7 @@ export async function draftCampaign(input: DraftInput) {
     .join("\n\n");
   const response = await client.beta.messages.parse({
     model: AI_MODEL,
-    max_tokens: 32000,
+    max_tokens: 16000,
     system: PROMPT,
     output_config: { effort: "medium", format: betaZodOutputFormat(Draft) },
     ...AI_FALLBACK,
@@ -184,7 +184,7 @@ export async function draftMarketingPlan(input: {
   });
   const response = await client.beta.messages.parse({
     model: AI_MODEL,
-    max_tokens: 32000,
+    max_tokens: 16000,
     system: PLAN_PROMPT,
     output_config: { effort: "medium", format: betaZodOutputFormat(PlanDraft) },
     ...AI_FALLBACK,

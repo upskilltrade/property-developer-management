@@ -51,6 +51,9 @@ export function aiReadable(
     ["svg", "txt", "md", "csv", "json"].includes(ext)
   )
     return n <= 300 * 1024 ? ("text" as const) : null;
+  // Word / PowerPoint / Excel: the text is pulled out on the server.
+  if (["docx", "pptx", "xlsx"].includes(ext))
+    return n <= 20 * 1024 * 1024 ? ("office" as const) : null;
   return null;
 }
 

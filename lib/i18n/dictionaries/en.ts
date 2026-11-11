@@ -2688,7 +2688,7 @@ const en: Dictionary = {
         noFiles:
           "No files yet. Upload project documents, or CI / logo / brochures in the brand kit.",
         unreadable:
-          "The AI can't read this (works with JPG/PNG/WebP images ≤5MB, PDF ≤18MB, SVG/TXT/CSV)",
+          "The AI can't read this (works with JPG/PNG/WebP images ≤5MB, PDF ≤18MB, Word/PowerPoint/Excel, SVG/TXT/CSV)",
       },
       ai: {
         button: "Build marketing plan with AI",
