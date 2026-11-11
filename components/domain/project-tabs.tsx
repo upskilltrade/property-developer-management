@@ -14,6 +14,7 @@ const sections = [
   "setup",
   "finance",
   "forecast",
+  "marketing",
 ] as const;
 
 export function ProjectTabs({

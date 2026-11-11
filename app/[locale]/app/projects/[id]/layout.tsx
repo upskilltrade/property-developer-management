@@ -76,6 +76,7 @@ export default async function ProjectLayout({
             setup: t.nav.setup,
             finance: t.nav.projectFinance,
             forecast: t.nav.projectForecast,
+            marketing: t.nav.projectMarketing,
           }}
         />
       </div>

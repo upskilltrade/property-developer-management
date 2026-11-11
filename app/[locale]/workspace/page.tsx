@@ -13,6 +13,7 @@ const routeByRole: [string, string][] = [
   ["SITE_ENGINEER", "/projects"],
   ["PROCUREMENT", "/projects"],
   ["SALES", "/projects"],
+  ["MARKETING_SALES", "/projects"],
   ["CRM", "/projects"],
   ["CONTRACTOR", "/contractor"],
   ["CUSTOMER", "/customer"],
