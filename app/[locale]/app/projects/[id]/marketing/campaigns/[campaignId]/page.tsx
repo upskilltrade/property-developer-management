@@ -49,6 +49,7 @@ import {
 import { assetTone, campaignTone, CampaignForm } from "../../parts";
 
 export const metadata: Metadata = { title: "Campaign" };
+export const maxDuration = 300;
 
 const copyTone: Record<string, Tone> = {
   DRAFT: "warning",

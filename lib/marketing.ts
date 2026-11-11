@@ -1,6 +1,7 @@
 /** Project marketing: brand kit files, the marketing plan, campaigns and their copy drafts. */
 
 export const assetCategories = [
+  "PROJECT_DATA",
   "LOGO",
   "CI",
   "BROCHURE",
@@ -16,6 +17,72 @@ export const assetCategories = [
   "OTHER",
 ] as const;
 export type AssetCategory = (typeof assetCategories)[number];
+
+/** Brand-kit categories the AI reads by default when it drafts the marketing plan. */
+export const planSourceCategories: readonly AssetCategory[] = [
+  "PROJECT_DATA",
+  "CI",
+  "LOGO",
+  "BROCHURE",
+  "PRESENTATION",
+  "PRICE_LIST",
+  "FLOOR_PLAN",
+];
+
+/** How the AI can read a file: images and PDFs directly, small text files as text. */
+export function aiReadable(
+  mime: string | null | undefined,
+  name: string | null | undefined,
+  size: number | null | undefined,
+) {
+  const m = (mime ?? "").toLowerCase();
+  const ext = (name ?? "").split(".").pop()?.toLowerCase() ?? "";
+  const n = size ?? 0;
+  if (
+    ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(m) ||
+    ["jpg", "jpeg", "png", "webp", "gif"].includes(ext)
+  )
+    return n <= 5 * 1024 * 1024 ? ("image" as const) : null;
+  if (m === "application/pdf" || ext === "pdf")
+    return n <= 18 * 1024 * 1024 ? ("pdf" as const) : null;
+  if (
+    m === "image/svg+xml" ||
+    m.startsWith("text/") ||
+    ["svg", "txt", "md", "csv", "json"].includes(ext)
+  )
+    return n <= 300 * 1024 ? ("text" as const) : null;
+  return null;
+}
+
+/** Image media type for the AI from a MIME type or file name. */
+export function imageMediaType(mime: string | null | undefined, name: string | null | undefined) {
+  const m = (mime ?? "").toLowerCase();
+  if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(m))
+    return m as "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+  const ext = (name ?? "").split(".").pop()?.toLowerCase();
+  return ext === "png"
+    ? "image/png"
+    : ext === "webp"
+      ? "image/webp"
+      : ext === "gif"
+        ? "image/gif"
+        : "image/jpeg";
+}
+
+/** Fills a plan from an AI draft: every field when overwriting, otherwise only the empty ones. */
+export function mergePlan<T extends Record<string, unknown>>(
+  current: Record<string, unknown> | null,
+  draft: T,
+  overwrite: boolean,
+) {
+  const empty = (v: unknown) => v == null || v === "" || (Array.isArray(v) && v.length === 0);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(draft)) {
+    if (empty(v)) continue;
+    if (overwrite || !current || empty(current[k])) out[k] = v;
+  }
+  return out;
+}
 
 export const assetStatuses = ["DRAFT", "REVIEW", "APPROVED", "ARCHIVED"] as const;
 export const assetLanguages = ["TH", "EN", "ZH", "RU", "DE", "MULTI"] as const;

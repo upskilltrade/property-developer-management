@@ -190,6 +190,7 @@ export default async function AppLayout({
               zone_has_subs: t.flash.zone_has_subs,
               campaignCode: t.flash.campaignCode,
               ai_too_long: t.flash.ai_too_long,
+              ai_no_input: t.flash.ai_no_input,
               ai_not_configured: t.flash.ai_not_configured,
               ai_no_photos: t.flash.ai_no_photos,
               ai_refusal: t.flash.ai_refusal,

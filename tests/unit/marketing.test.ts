@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  aiReadable,
+  imageMediaType,
+  mergePlan,
   campaignDays,
   colorsText,
   costPer,
@@ -79,5 +82,40 @@ describe("marketing helpers", () => {
       ),
     ).toBe("campaignCode");
     expect(marketingErrorKey("violates check constraint")).toBe("invalid");
+  });
+
+  it("knows which files the AI can read", () => {
+    expect(aiReadable("image/png", "logo.png", 1000)).toBe("image");
+    expect(aiReadable("image/png", "big.png", 6 * 1024 * 1024)).toBeNull();
+    expect(aiReadable("application/pdf", "ci.pdf", 10 * 1024 * 1024)).toBe("pdf");
+    expect(aiReadable("image/svg+xml", "logo.svg", 20_000)).toBe("text");
+    expect(aiReadable("application/postscript", "logo.ai", 1000)).toBeNull();
+    expect(aiReadable("", "brief.txt", 500)).toBe("text");
+    expect(imageMediaType("", "a.PNG".toLowerCase())).toBe("image/png");
+    expect(imageMediaType("image/webp", "x")).toBe("image/webp");
+  });
+
+  it("fills only empty plan fields unless overwriting", () => {
+    const current = { tagline: "Ours", usp: "", brand_colors: [] };
+    const draft = {
+      tagline: "AI",
+      usp: "Pool",
+      brand_colors: [{ name: "P", hex: "#000000" }],
+      notes: null,
+    };
+    expect(mergePlan(current, draft, false)).toEqual({
+      usp: "Pool",
+      brand_colors: draft.brand_colors,
+    });
+    expect(mergePlan(current, draft, true)).toEqual({
+      tagline: "AI",
+      usp: "Pool",
+      brand_colors: draft.brand_colors,
+    });
+    expect(mergePlan(null, draft, false)).toEqual({
+      tagline: "AI",
+      usp: "Pool",
+      brand_colors: draft.brand_colors,
+    });
   });
 });

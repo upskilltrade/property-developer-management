@@ -15,13 +15,16 @@ import {
   copyFormats,
   copyLanguages,
   copyStatuses,
+  aiReadable,
+  imageMediaType,
   marketingErrorKey,
+  mergePlan,
   oneOf,
   parseColors,
   parseTags,
   pickMany,
 } from "@/lib/marketing";
-import { draftCampaign } from "@/lib/marketing-ai";
+import { draftCampaign, draftMarketingPlan, type PlanFile } from "@/lib/marketing-ai";
 
 const BUCKET = "marketing-files";
 
@@ -387,24 +390,22 @@ const mb = (n: number | null) => (n == null ? null : `${(n / 1_000_000).toFixed(
  * spec highlights and marketing plan. The concept replaces the campaign's; copies are added as
  * AI drafts for the team to edit and approve.
  */
-export async function draftCampaignWithAi(fd: FormData) {
-  const { supabase, user, project, fail, finish } = await context(fd);
-  if (!aiConfigured()) fail("ai_not_configured");
-  const campaignId = str(fd, "campaign_id");
-  const [{ data: campaign }, { data: plan }, { data: units }, { data: spec }] = await Promise.all([
-    supabase.from("marketing_campaigns").select("*").eq("id", campaignId).maybeSingle(),
-    supabase.from("marketing_plans").select("*").eq("project_id", project.id).maybeSingle(),
+type Client = Awaited<ReturnType<typeof createClient>>;
+
+/** Units, house types, plots and spec highlights as plain lines for an AI prompt. */
+async function projectFacts(supabase: Client, projectId: string) {
+  const [{ data: units }, { data: spec }] = await Promise.all([
     supabase
       .from("units")
       .select(
         "code,status,list_price,plots(land_area_sqm),house_types(name,bedrooms,bathrooms,gross_floor_area_sqm)",
       )
-      .eq("project_id", project.id)
+      .eq("project_id", projectId)
       .order("code"),
     supabase
       .from("spec_items")
       .select("category,area,name,brand,model")
-      .eq("project_id", project.id)
+      .eq("project_id", projectId)
       .eq("active", true)
       .in("category", [
         "POOL",
@@ -419,13 +420,6 @@ export async function draftCampaignWithAi(fd: FormData) {
       .order("seq")
       .limit(40),
   ]);
-  if (!campaign) fail("permission");
-  const { data: canEdit } = await supabase.rpc("can_market", {
-    target_project: project.id,
-    target_action: "EDIT",
-  });
-  if (!canEdit) fail("permission");
-
   const one = <T>(v: T | T[] | null) => (Array.isArray(v) ? v[0] : v);
   const facts: string[] = [];
   for (const u of units ?? []) {
@@ -448,6 +442,29 @@ export async function draftCampaignWithAi(fd: FormData) {
   }
   for (const s of spec ?? [])
     facts.push(`Spec: ${[s.area, s.name, s.brand, s.model].filter(Boolean).join(" · ")}`);
+  return facts;
+}
+
+/**
+ * Asks the AI for a campaign concept and copies, using the project's real units, house types,
+ * spec highlights and marketing plan. The concept replaces the campaign's; copies are added as
+ * AI drafts for the team to edit and approve.
+ */
+export async function draftCampaignWithAi(fd: FormData) {
+  const { supabase, user, project, fail, finish } = await context(fd);
+  if (!aiConfigured()) fail("ai_not_configured");
+  const campaignId = str(fd, "campaign_id");
+  const [{ data: campaign }, { data: plan }, facts] = await Promise.all([
+    supabase.from("marketing_campaigns").select("*").eq("id", campaignId).maybeSingle(),
+    supabase.from("marketing_plans").select("*").eq("project_id", project.id).maybeSingle(),
+    projectFacts(supabase, project.id),
+  ]);
+  if (!campaign) fail("permission");
+  const { data: canEdit } = await supabase.rpc("can_market", {
+    target_project: project.id,
+    target_action: "EDIT",
+  });
+  if (!canEdit) fail("permission");
 
   let errorKey: string | null = null;
   let usage = { input_tokens: 0, output_tokens: 0 };
@@ -456,6 +473,7 @@ export async function draftCampaignWithAi(fd: FormData) {
       project: { name: project.name, code: project.code },
       facts,
       plan: {
+        project_brief: plan?.raw_brief?.slice(0, 6000) ?? null,
         tagline: plan?.tagline ?? null,
         location: plan?.location_text ?? null,
         website: plan?.website_url ?? null,
@@ -515,4 +533,183 @@ export async function draftCampaignWithAi(fd: FormData) {
   });
   if (errorKey) fail(errorKey);
   finish(null, "aiDraft");
+}
+
+// ---------------------------------------------------------------- raw data and AI plan
+
+/** Saves the raw project brief (concept, details, notes) the AI reads before drafting the plan. */
+export async function saveRawBrief(fd: FormData) {
+  const { supabase, user, project, finish } = await context(fd);
+  const { error } = await supabase.from("marketing_plans").upsert(
+    {
+      organization_id: project.organization_id,
+      project_id: project.id,
+      raw_brief: optStr(fd, "raw_brief"),
+      updated_by: user.id,
+    },
+    { onConflict: "project_id" },
+  );
+  finish(error, "plan");
+}
+
+const MAX_AI_FILES = 10;
+// Base64 grows files by a third; the API takes about 32 MB per request.
+const MAX_AI_BYTES = 18 * 1024 * 1024;
+
+/**
+ * Drafts the marketing plan with the AI from the raw brief, the project's facts and the chosen
+ * files (project data, CI, logo, brochures ...). Fills only empty fields unless "overwrite" is on.
+ */
+export async function draftPlanWithAi(fd: FormData) {
+  const { supabase, user, project, fail, finish } = await context(fd);
+  if (!aiConfigured()) fail("ai_not_configured");
+  const { data: canEdit } = await supabase.rpc("can_market", {
+    target_project: project.id,
+    target_action: "EDIT",
+  });
+  if (!canEdit) fail("permission");
+  const overwrite = fd.get("overwrite") === "on";
+  const ids = [...new Set(fd.getAll("asset_id").map(String).filter(Boolean))];
+
+  const [{ data: plan }, { data: assets }, facts] = await Promise.all([
+    supabase.from("marketing_plans").select("*").eq("project_id", project.id).maybeSingle(),
+    ids.length
+      ? supabase
+          .from("marketing_assets")
+          .select(
+            "id,title,category,files:marketing_asset_files(path,version_no,file_name,mime_type,size_bytes)",
+          )
+          .eq("project_id", project.id)
+          .in("id", ids)
+      : Promise.resolve({ data: [] as never[] }),
+    projectFacts(supabase, project.id),
+  ]);
+  const rawBrief = optStr(fd, "raw_brief") ?? plan?.raw_brief ?? null;
+
+  // Read the latest version of each chosen file the AI can open, within the size budget.
+  const files: PlanFile[] = [];
+  const skipped: string[] = [];
+  let bytes = 0;
+  for (const a of assets ?? []) {
+    const f = [
+      ...((a.files ?? []) as {
+        path: string;
+        version_no: number;
+        file_name: string | null;
+        mime_type: string | null;
+        size_bytes: number | null;
+      }[]),
+    ].sort((x, y) => y.version_no - x.version_no)[0];
+    const kind = f ? aiReadable(f.mime_type, f.file_name, f.size_bytes) : null;
+    const name = `${a.title} [${a.category}]${f?.file_name ? ` ${f.file_name}` : ""}`;
+    if (!f || !kind || files.length >= MAX_AI_FILES || bytes + (f.size_bytes ?? 0) > MAX_AI_BYTES) {
+      skipped.push(a.title);
+      continue;
+    }
+    const { data: blob } = await supabase.storage.from(BUCKET).download(f.path);
+    if (!blob) {
+      skipped.push(a.title);
+      continue;
+    }
+    bytes += blob.size;
+    if (kind === "text") {
+      files.push({ name, kind, text: (await blob.text()).slice(0, 60_000) });
+    } else {
+      const data = Buffer.from(await blob.arrayBuffer()).toString("base64");
+      files.push(
+        kind === "image"
+          ? { name, kind, media_type: imageMediaType(f.mime_type, f.file_name), data }
+          : { name, kind, data },
+      );
+    }
+  }
+  if (!files.length && !rawBrief && !facts.length) fail("ai_no_input");
+
+  let errorKey: string | null = null;
+  let usage = { input_tokens: 0, output_tokens: 0 };
+  try {
+    const current = plan
+      ? Object.fromEntries(
+          Object.entries(plan).filter(
+            ([k]) =>
+              ![
+                "id",
+                "organization_id",
+                "project_id",
+                "updated_by",
+                "created_at",
+                "updated_at",
+                "raw_brief",
+                "ai_summary",
+                "ai_drafted_at",
+              ].includes(k),
+          ),
+        )
+      : null;
+    const result = await draftMarketingPlan({
+      project: { name: project.name, code: project.code },
+      facts,
+      notes: rawBrief,
+      current,
+      files,
+    });
+    usage = result.usage;
+    const d = result.plan;
+    const colors = parseColors(d.brand_colors.map((c) => `${c.name} ${c.hex}`).join("\n"));
+    const whole = (n: number | null) => (n != null && n >= 0 ? Math.round(n) : null);
+    const fields = mergePlan(
+      plan,
+      {
+        tagline: d.tagline,
+        location_text: d.location_text,
+        website_url: d.website_url,
+        target_audience: d.target_audience,
+        personas: d.personas,
+        usp: d.usp,
+        key_message: d.key_message,
+        positioning: d.positioning,
+        competitors: d.competitors,
+        brand_tone: d.brand_tone,
+        brand_fonts: d.brand_fonts,
+        brand_colors: colors,
+        budget_total: whole(d.budget_total),
+        goal_leads: whole(d.goal_leads),
+        goal_bookings: whole(d.goal_bookings),
+        goal_sales_value: whole(d.goal_sales_value),
+        notes: d.notes,
+      },
+      overwrite,
+    );
+    const summary = [d.summary, skipped.length ? `ไม่ได้อ่าน: ${skipped.join(", ")}` : ""]
+      .filter(Boolean)
+      .join("\n");
+    const { error } = await supabase.from("marketing_plans").upsert(
+      {
+        ...fields,
+        organization_id: project.organization_id,
+        project_id: project.id,
+        raw_brief: rawBrief,
+        ai_summary: summary,
+        ai_drafted_at: new Date().toISOString(),
+        updated_by: user.id,
+      },
+      { onConflict: "project_id" },
+    );
+    if (error) throw error;
+  } catch (e) {
+    console.error("marketing AI plan failed", e);
+    errorKey =
+      e && typeof e === "object" && "code" in e && !(e instanceof Error)
+        ? marketingErrorKey((e as { message?: string }).message)
+        : `ai_${aiErrorKey(e)}`;
+  }
+  await supabase.rpc("log_assistant_turn", {
+    question_text: `[marketing-plan] ${project.code} (${files.length} files)`,
+    tools_used: ["marketing"],
+    tokens_in: usage.input_tokens,
+    tokens_out: usage.output_tokens,
+    stop: errorKey ? "error" : "end_turn",
+  });
+  if (errorKey) fail(errorKey);
+  finish(null, "aiPlan");
 }

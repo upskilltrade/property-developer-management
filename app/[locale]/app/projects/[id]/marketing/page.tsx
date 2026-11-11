@@ -52,8 +52,12 @@ import {
   updateAsset,
 } from "./actions";
 import { assetTone, campaignTone, CampaignForm } from "./parts";
+import { PlanSteps } from "./plan-steps";
+import { aiConfigured } from "@/lib/ai";
 
 export const metadata: Metadata = { title: "Marketing" };
+// The AI plan reads several files and can take a few minutes.
+export const maxDuration = 300;
 
 type View = "overview" | "plan" | "assets" | "campaigns";
 const views: View[] = ["overview", "plan", "assets", "campaigns"];
@@ -377,129 +381,160 @@ export default async function ProjectMarketing({
       ) : null}
 
       {view === "plan" ? (
-        <Panel
-          title={m.views.plan}
-          description={plan?.updated_at ? formatDate(locale, plan.updated_at) : undefined}
-        >
+        <>
           {canEdit ? (
-            <form action={savePlan} className="space-y-6 p-4">
-              <Hidden values={{ locale, return_to: back, project_id: id }} />
-              <PlanSection title={m.plan.sections.brand}>
-                <FormGrid>
-                  <Field label={m.plan.fields.tagline}>
-                    <Input name="tagline" defaultValue={plan?.tagline ?? ""} />
-                  </Field>
-                  <Field label={m.plan.fields.website_url}>
-                    <Input
-                      name="website_url"
-                      type="url"
-                      defaultValue={plan?.website_url ?? ""}
-                      placeholder="https://"
-                    />
-                  </Field>
-                </FormGrid>
-                <Field label={m.plan.fields.location_text}>
-                  <Input name="location_text" defaultValue={plan?.location_text ?? ""} />
-                </Field>
-                <FormGrid>
-                  <Field label={m.plan.fields.brand_colors} hint={m.plan.hints.brand_colors}>
-                    <Textarea
-                      name="brand_colors"
-                      defaultValue={colorsText(colors)}
-                      placeholder={"Primary #1F3A5F\nGold #C9A86A\nSand #F4EFE6"}
-                      className="font-mono"
-                    />
-                  </Field>
-                  <div className="space-y-3">
-                    <Field label={m.plan.fields.brand_fonts}>
+            <PlanSteps
+              t={t}
+              locale={locale}
+              hidden={{ locale, return_to: back, project_id: id }}
+              folder={`${project.organization_id}/${id}`}
+              rawBrief={plan?.raw_brief ?? null}
+              aiSummary={plan?.ai_summary ?? null}
+              aiDraftedAt={plan?.ai_drafted_at ?? null}
+              aiEnabled={aiConfigured()}
+              sources={(assets ?? [])
+                .filter((a) => a.status !== "ARCHIVED")
+                .map((a) => {
+                  const f = latest(a.id);
+                  return {
+                    id: a.id,
+                    title: a.title,
+                    category: a.category,
+                    file: f
+                      ? { file_name: f.file_name, mime_type: f.mime_type, size_bytes: f.size_bytes }
+                      : null,
+                  };
+                })}
+            />
+          ) : null}
+          <Panel
+            title={canEdit ? m.plan.steps.review : m.views.plan}
+            description={plan?.updated_at ? formatDate(locale, plan.updated_at) : undefined}
+          >
+            {canEdit ? (
+              <form action={savePlan} className="space-y-6 p-4">
+                <Hidden values={{ locale, return_to: back, project_id: id }} />
+                <PlanSection title={m.plan.sections.brand}>
+                  <FormGrid>
+                    <Field label={m.plan.fields.tagline}>
+                      <Input name="tagline" defaultValue={plan?.tagline ?? ""} />
+                    </Field>
+                    <Field label={m.plan.fields.website_url}>
                       <Input
-                        name="brand_fonts"
-                        defaultValue={plan?.brand_fonts ?? ""}
-                        placeholder="Playfair Display / Sarabun"
+                        name="website_url"
+                        type="url"
+                        defaultValue={plan?.website_url ?? ""}
+                        placeholder="https://"
                       />
                     </Field>
-                    <Field label={m.plan.fields.brand_tone} hint={m.plan.hints.brand_tone}>
-                      <Input name="brand_tone" defaultValue={plan?.brand_tone ?? ""} />
+                  </FormGrid>
+                  <Field label={m.plan.fields.location_text}>
+                    <Input name="location_text" defaultValue={plan?.location_text ?? ""} />
+                  </Field>
+                  <FormGrid>
+                    <Field label={m.plan.fields.brand_colors} hint={m.plan.hints.brand_colors}>
+                      <Textarea
+                        name="brand_colors"
+                        defaultValue={colorsText(colors)}
+                        placeholder={"Primary #1F3A5F\nGold #C9A86A\nSand #F4EFE6"}
+                        className="font-mono"
+                      />
                     </Field>
-                  </div>
-                </FormGrid>
-                {colors.length ? <Swatches colors={colors} /> : null}
-              </PlanSection>
+                    <div className="space-y-3">
+                      <Field label={m.plan.fields.brand_fonts}>
+                        <Input
+                          name="brand_fonts"
+                          defaultValue={plan?.brand_fonts ?? ""}
+                          placeholder="Playfair Display / Sarabun"
+                        />
+                      </Field>
+                      <Field label={m.plan.fields.brand_tone} hint={m.plan.hints.brand_tone}>
+                        <Input name="brand_tone" defaultValue={plan?.brand_tone ?? ""} />
+                      </Field>
+                    </div>
+                  </FormGrid>
+                  {colors.length ? <Swatches colors={colors} /> : null}
+                </PlanSection>
 
-              <PlanSection title={m.plan.sections.audience}>
-                <Field label={m.plan.fields.target_audience} hint={m.plan.hints.target_audience}>
-                  <Textarea name="target_audience" defaultValue={plan?.target_audience ?? ""} />
-                </Field>
-                <Field label={m.plan.fields.personas} hint={m.plan.hints.personas}>
-                  <Textarea name="personas" rows={5} defaultValue={plan?.personas ?? ""} />
-                </Field>
-                <FormGrid>
-                  <Field label={m.plan.fields.usp} hint={m.plan.hints.usp}>
-                    <Textarea name="usp" rows={5} defaultValue={plan?.usp ?? ""} />
+                <PlanSection title={m.plan.sections.audience}>
+                  <Field label={m.plan.fields.target_audience} hint={m.plan.hints.target_audience}>
+                    <Textarea name="target_audience" defaultValue={plan?.target_audience ?? ""} />
                   </Field>
-                  <Field label={m.plan.fields.competitors}>
-                    <Textarea name="competitors" rows={5} defaultValue={plan?.competitors ?? ""} />
+                  <Field label={m.plan.fields.personas} hint={m.plan.hints.personas}>
+                    <Textarea name="personas" rows={5} defaultValue={plan?.personas ?? ""} />
                   </Field>
-                </FormGrid>
-                <FormGrid>
-                  <Field label={m.plan.fields.key_message}>
-                    <Textarea name="key_message" defaultValue={plan?.key_message ?? ""} />
-                  </Field>
-                  <Field label={m.plan.fields.positioning}>
-                    <Textarea name="positioning" defaultValue={plan?.positioning ?? ""} />
-                  </Field>
-                </FormGrid>
-              </PlanSection>
+                  <FormGrid>
+                    <Field label={m.plan.fields.usp} hint={m.plan.hints.usp}>
+                      <Textarea name="usp" rows={5} defaultValue={plan?.usp ?? ""} />
+                    </Field>
+                    <Field label={m.plan.fields.competitors}>
+                      <Textarea
+                        name="competitors"
+                        rows={5}
+                        defaultValue={plan?.competitors ?? ""}
+                      />
+                    </Field>
+                  </FormGrid>
+                  <FormGrid>
+                    <Field label={m.plan.fields.key_message}>
+                      <Textarea name="key_message" defaultValue={plan?.key_message ?? ""} />
+                    </Field>
+                    <Field label={m.plan.fields.positioning}>
+                      <Textarea name="positioning" defaultValue={plan?.positioning ?? ""} />
+                    </Field>
+                  </FormGrid>
+                </PlanSection>
 
-              <PlanSection title={m.plan.sections.goals}>
-                <FormGrid cols={3}>
-                  <Field label={m.plan.fields.budget_total}>
-                    <Input
-                      name="budget_total"
-                      inputMode="decimal"
-                      defaultValue={plan?.budget_total ?? ""}
-                    />
+                <PlanSection title={m.plan.sections.goals}>
+                  <FormGrid cols={3}>
+                    <Field label={m.plan.fields.budget_total}>
+                      <Input
+                        name="budget_total"
+                        inputMode="decimal"
+                        defaultValue={plan?.budget_total ?? ""}
+                      />
+                    </Field>
+                    <Field label={m.plan.fields.start_date}>
+                      <Input name="start_date" type="date" defaultValue={plan?.start_date ?? ""} />
+                    </Field>
+                    <Field label={m.plan.fields.end_date}>
+                      <Input name="end_date" type="date" defaultValue={plan?.end_date ?? ""} />
+                    </Field>
+                    <Field label={m.plan.fields.goal_leads}>
+                      <Input
+                        name="goal_leads"
+                        inputMode="numeric"
+                        defaultValue={plan?.goal_leads ?? ""}
+                      />
+                    </Field>
+                    <Field label={m.plan.fields.goal_bookings}>
+                      <Input
+                        name="goal_bookings"
+                        inputMode="numeric"
+                        defaultValue={plan?.goal_bookings ?? ""}
+                      />
+                    </Field>
+                    <Field label={m.plan.fields.goal_sales_value}>
+                      <Input
+                        name="goal_sales_value"
+                        inputMode="decimal"
+                        defaultValue={plan?.goal_sales_value ?? ""}
+                      />
+                    </Field>
+                  </FormGrid>
+                  <Field label={m.plan.fields.notes}>
+                    <Textarea name="notes" defaultValue={plan?.notes ?? ""} />
                   </Field>
-                  <Field label={m.plan.fields.start_date}>
-                    <Input name="start_date" type="date" defaultValue={plan?.start_date ?? ""} />
-                  </Field>
-                  <Field label={m.plan.fields.end_date}>
-                    <Input name="end_date" type="date" defaultValue={plan?.end_date ?? ""} />
-                  </Field>
-                  <Field label={m.plan.fields.goal_leads}>
-                    <Input
-                      name="goal_leads"
-                      inputMode="numeric"
-                      defaultValue={plan?.goal_leads ?? ""}
-                    />
-                  </Field>
-                  <Field label={m.plan.fields.goal_bookings}>
-                    <Input
-                      name="goal_bookings"
-                      inputMode="numeric"
-                      defaultValue={plan?.goal_bookings ?? ""}
-                    />
-                  </Field>
-                  <Field label={m.plan.fields.goal_sales_value}>
-                    <Input
-                      name="goal_sales_value"
-                      inputMode="decimal"
-                      defaultValue={plan?.goal_sales_value ?? ""}
-                    />
-                  </Field>
-                </FormGrid>
-                <Field label={m.plan.fields.notes}>
-                  <Textarea name="notes" defaultValue={plan?.notes ?? ""} />
-                </Field>
-              </PlanSection>
-              <div className="flex justify-end">
-                <SubmitButton>{t.common.save}</SubmitButton>
-              </div>
-            </form>
-          ) : (
-            <PlanReadOnly t={t} locale={locale} plan={plan} />
-          )}
-        </Panel>
+                </PlanSection>
+                <div className="flex justify-end">
+                  <SubmitButton>{t.common.save}</SubmitButton>
+                </div>
+              </form>
+            ) : (
+              <PlanReadOnly t={t} locale={locale} plan={plan} />
+            )}
+          </Panel>
+        </>
       ) : null}
 
       {view === "assets" ? (

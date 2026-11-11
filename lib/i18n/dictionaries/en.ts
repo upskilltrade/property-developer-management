@@ -124,6 +124,7 @@ const en: Dictionary = {
     research_empty: "The AI found nothing new with a source",
     campaignCode: "This campaign code is already used in the project; pick another.",
     ai_too_long: "The AI answer was too long; try fewer channels or languages.",
+    ai_no_input: "Nothing for the AI to read yet. Add the raw project brief or pick files first.",
     ai_not_configured: "ANTHROPIC_API_KEY is not set — AI features are unavailable",
     ai_no_photos: "No photos the AI can read (JPG/PNG/WebP up to 4.5MB)",
     ai_refusal: "The AI couldn't assess this item",
@@ -2670,6 +2671,34 @@ const en: Dictionary = {
       logo: "Logo",
     },
     plan: {
+      steps: {
+        raw: "Step 1 · Raw project data",
+        rawBody:
+          "Paste the concept, project details, prices, location, highlights or any notes, and upload project documents (deck, master plan, price list), CI files, the logo and brochures. The AI reads all of it before analysing.",
+        ai: "Step 2 · Let the AI analyse and build the plan",
+        review: "Step 3 · Review and edit the plan",
+      },
+      raw: {
+        brief: "Project concept and details",
+        briefHint:
+          "Type or paste as much as you like: concept, intended buyers, selling points, location, budget, goals",
+        save: "Save raw data",
+        upload: "Upload project document",
+        files: "Files the AI will read",
+        noFiles:
+          "No files yet. Upload project documents, or CI / logo / brochures in the brand kit.",
+        unreadable:
+          "The AI can't read this (works with JPG/PNG/WebP images ≤5MB, PDF ≤18MB, SVG/TXT/CSV)",
+      },
+      ai: {
+        button: "Build marketing plan with AI",
+        title: "Analyse and build the marketing plan with AI",
+        body: "The AI reads the raw brief, the project's real data (units, prices, house types, spec) and the files you pick, then drafts the audience, personas, selling points, key message, brand tone, budget and goals, taking colours and fonts from the CI files and logo.",
+        pickFiles: "Files for the AI to read (up to 10)",
+        overwrite: "Overwrite fields already filled in (otherwise the AI only fills empty ones)",
+        run: "Start analysis (about 1-3 minutes)",
+        last: "Last AI draft {date}",
+      },
       edit: "Edit marketing plan",
       sections: {
         brand: "Brand",
@@ -2743,6 +2772,7 @@ const en: Dictionary = {
         ARCHIVED: "Archive",
       },
       category: {
+        PROJECT_DATA: "Project data (raw)",
         LOGO: "Logo",
         CI: "CI / brand guide",
         BROCHURE: "Brochure",
