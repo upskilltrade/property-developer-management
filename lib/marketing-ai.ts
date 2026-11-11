@@ -81,3 +81,117 @@ export async function draftCampaign(input: DraftInput) {
   if (!response.parsed_output) throw new AiRefusalError();
   return { draft: response.parsed_output, usage: response.usage };
 }
+
+// ---------------------------------------------------------------- marketing plan from files
+
+const PlanDraft = z.object({
+  tagline: z.string().nullable(),
+  location_text: z.string().nullable(),
+  website_url: z.string().nullable(),
+  target_audience: z.string(),
+  personas: z.string(),
+  usp: z.string(),
+  key_message: z.string(),
+  positioning: z.string(),
+  competitors: z.string().nullable(),
+  brand_tone: z.string(),
+  brand_fonts: z.string().nullable(),
+  brand_colors: z.array(z.object({ name: z.string(), hex: z.string() })),
+  budget_total: z.number().nullable(),
+  goal_leads: z.number().nullable(),
+  goal_bookings: z.number().nullable(),
+  goal_sales_value: z.number().nullable(),
+  notes: z.string(),
+  summary: z.string(),
+});
+export type PlanDraftResult = z.infer<typeof PlanDraft>;
+
+const PLAN_PROMPT = `You are a senior property marketing strategist in Thailand. You write the marketing plan for a small luxury housing project (pool villas) that sells to Thai buyers and to foreign buyers and retirees.
+
+You get the project's facts from its database (units, prices, house types, land sizes, spec), the marketer's notes on the concept, and the project's files: logo, CI / brand guide, brochures, presentations and other material.
+
+Read the files carefully:
+- Brand colours: take them from the CI / brand guide when it lists them (copy the hex codes exactly; convert CMYK/RGB/Pantone to hex when given). Otherwise read the dominant colours of the logo. Name each colour (Primary, Secondary, Accent, Neutral ...). At most 6.
+- Fonts: the typefaces the brand guide names, or the closest well-known match to the logo's lettering, saying it is a match.
+- Tagline, location, website, selling points and wording that the brochure or presentation already uses: reuse them.
+
+Then write the plan in Thai (keep English brand names and taglines as they are):
+- target_audience: the main buyer groups, in priority order.
+- personas: 2-3 personas, each with age, origin, motivation, worries and how they buy.
+- usp: one selling point per line, specific to this project.
+- key_message: one or two sentences.
+- positioning: against the competitors in the area; competitors only if the files or notes name them.
+- brand_tone: how the brand speaks.
+- budget_total: a recommended total marketing budget in baht, around 2-4% of total list value unless the notes say otherwise, explained in notes; goal_leads and goal_bookings consistent with the number of units (assume roughly 1 booking per 40-60 qualified leads for this kind of product, and say so in notes); goal_sales_value = total list value of unsold units when known.
+- notes: the reasoning behind the budget and goals, the recommended channel mix and phasing (pre-launch, launch, sustain), and anything the files did not show that the team should provide.
+- summary: 2-3 sentences in Thai saying which files you read and what you took from each.
+
+Rules: use only what the facts, notes and files say for prices, sizes and offers; never invent awards, guarantees, rental yields or land ownership for foreigners. Null for anything you cannot support.`;
+
+export type PlanFile =
+  | {
+      name: string;
+      kind: "image";
+      media_type: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+      data: string;
+    }
+  | { name: string; kind: "pdf"; data: string }
+  | { name: string; kind: "text"; text: string };
+
+/** Drafts the project's marketing plan from its facts, the marketer's notes and its uploaded files. */
+export async function draftMarketingPlan(input: {
+  project: { name: string; code: string };
+  facts: string[];
+  notes: string | null;
+  current: Record<string, unknown> | null;
+  files: PlanFile[];
+}) {
+  const client = new Anthropic();
+  const content: Anthropic.Beta.BetaContentBlockParam[] = [];
+  for (const f of input.files) {
+    content.push({ type: "text", text: `FILE: ${f.name}` });
+    if (f.kind === "image")
+      content.push({
+        type: "image",
+        source: { type: "base64", media_type: f.media_type, data: f.data },
+      });
+    else if (f.kind === "pdf")
+      content.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: f.data },
+        title: f.name,
+      });
+    else content.push({ type: "text", text: f.text });
+  }
+  const current = input.current
+    ? Object.entries(input.current)
+        .filter(([, v]) => v != null && v !== "" && !(Array.isArray(v) && !v.length))
+        .map(([k, v]) => `- ${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`)
+        .join("\n")
+    : "";
+  content.push({
+    type: "text",
+    text: [
+      `PROJECT: ${input.project.name} (${input.project.code})`,
+      input.facts.length ? `PROJECT FACTS:\n${input.facts.map((f) => `- ${f}`).join("\n")}` : "",
+      input.notes ? `CONCEPT AND NOTES FROM THE MARKETER:\n${input.notes}` : "",
+      current ? `WHAT THE PLAN SAYS NOW (improve on it, keep what is good):\n${current}` : "",
+      input.files.length ? `${input.files.length} file(s) attached above.` : "No files attached.",
+      "Write the marketing plan.",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  });
+  const response = await client.beta.messages.parse({
+    model: AI_MODEL,
+    max_tokens: 32000,
+    system: PLAN_PROMPT,
+    output_config: { effort: "medium", format: betaZodOutputFormat(PlanDraft) },
+    ...AI_FALLBACK,
+    messages: [{ role: "user", content }],
+  });
+  if (response.stop_reason === "refusal") throw new AiRefusalError();
+  if (response.stop_reason === "max_tokens") throw new AiTooLongError();
+  if (!response.parsed_output) throw new AiRefusalError();
+  return { plan: response.parsed_output, usage: response.usage };
+}
