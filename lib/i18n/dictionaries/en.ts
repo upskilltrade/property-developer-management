@@ -1430,6 +1430,40 @@ const en: Dictionary = {
     partner: "Contractor",
     note: "Note",
     by: "by",
+    boq: {
+      hint: "BOQ in levels: cost code → work group → work item → optional detail. A group's total is the sum of what is under it",
+      kind: "Type",
+      kindItem: "Work item (quantity × rate)",
+      kindGroup: "Work group (sums the items under it)",
+      parent: "Under group",
+      parentHint: "Items under a group use the group's cost code",
+      topLevel: "— Top level of the cost code —",
+      costCodeHint: "Used at the top level",
+      scope: "Counted for",
+      scopeHint: "Per house = enter one house's quantity; the system multiplies by the houses",
+      scopes: {
+        PROJECT: "Whole project (once)",
+        PER_UNIT: "Per house × every house",
+        UNIT: "One house only",
+      },
+      houseType: "Only house type",
+      allHouseTypes: "All house types",
+      specItem: "Related spec item",
+      noSpec: "— None —",
+      addGroup: "Add group",
+      addChild: "Add under",
+      addUnder: "Add under {name}",
+      override: "Change for one house",
+      overrideHint:
+        "This house's quantity/rate replaces the standard. Enter 0 if the house does not have it",
+      perHouse: "per house × {n} houses",
+      standard: "Standard",
+      changedForUnit: "Changed for this house",
+      notInHouse: "Not in this house",
+      wholeProject: "Whole project",
+      unitViewHint:
+        "Cost of {unit}: per-house lines (or this house's change) + its own lines, without project-wide work",
+    },
   },
   handover: {
     views: {
@@ -1954,6 +1988,8 @@ const en: Dictionary = {
     unpriced:
       '{n} houses have no list price yet, so revenue is incomplete. Click "Edit" on the house sales line and enter an expected price per house, or set list prices on the unit pages.',
     unpricedRate: "+ {rate} × {n} houses without a price",
+    fromBoqVersion: "From BOQ v{n} ({status})",
+    noBoq: "No BOQ yet",
     kpi: {
       revenue: "Forecast revenue",
       costs: "Total costs",
@@ -2059,6 +2095,7 @@ const en: Dictionary = {
       PER_UNIT: "Per house / unit",
       PCT_REVENUE: "% of revenue",
       UNITS_FROM_SYSTEM: "From unit prices in the system (sold = contract price)",
+      FROM_BOQ: "Total from the BOQ (by cost category)",
     },
     timings: {
       START: "At the start",
@@ -2106,6 +2143,8 @@ const en: Dictionary = {
       selfOnly: "Only when selling in-house (not counted with a sole agent)",
       unitsRate: "Expected price per house (for houses with no price yet)",
       unitsRateHint: "{n} houses have no list price yet; priced houses use their system price",
+      boqHint:
+        "Taken from the working BOQ version (the draft, else the approved one) for the linked cost category. Edit the detail under Purchasing → BOQ",
       areaHint: "Floor area of all units in the system: {n} sq.m.",
     },
     plan: {

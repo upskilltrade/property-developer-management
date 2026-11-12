@@ -255,3 +255,21 @@ describe("feasibility", () => {
 function round2(v: number) {
   return Math.round(v * 100) / 100;
 }
+
+describe("lines from the BOQ", () => {
+  it("take the working BOQ total of their cost category", () => {
+    const boqFacts: ForecastFacts = {
+      ...facts,
+      boqByCategory: new Map([["cat-house", 37_438_000]]),
+    };
+    const r = computeForecast(
+      plan,
+      [
+        line({ category: "CONSTRUCTION", method: "FROM_BOQ", cost_category_id: "cat-house" }),
+        line({ category: "OTHER", method: "FROM_BOQ", cost_category_id: "cat-none" }),
+      ],
+      boqFacts,
+    );
+    expect(r.lines.map((l) => l.forecast)).toEqual([37_438_000, 0]);
+  });
+});

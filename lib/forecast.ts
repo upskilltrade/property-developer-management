@@ -28,6 +28,7 @@ export const forecastMethods = [
   "PER_UNIT",
   "PCT_REVENUE",
   "UNITS_FROM_SYSTEM",
+  "FROM_BOQ",
 ] as const;
 export const forecastTimings = ["START", "SPREAD", "WITH_SALES", "END"] as const;
 
@@ -87,6 +88,9 @@ export type ForecastFacts = {
   constructionRevenue?: number;
   /** Spending recorded against each cost category (posted payments / commitments). */
   actualByCategory: Map<string, { actual: number; committed: number }>;
+  /** Totals per cost category of the working BOQ version (FROM_BOQ lines). */
+  boqByCategory?: Map<string, number>;
+  boqVersion?: { version: number; status: string } | null;
 };
 
 const n = (v: unknown) => {
@@ -155,6 +159,8 @@ export function computeForecast(
         return n(l.rate) * n(l.quantity);
       case "PCT_REVENUE":
         return pct(l.pct) * revenue;
+      case "FROM_BOQ":
+        return l.cost_category_id ? n(facts.boqByCategory?.get(l.cost_category_id)) : 0;
       default:
         return n(l.amount);
     }

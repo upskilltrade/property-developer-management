@@ -17,17 +17,26 @@ export async function newBudgetVersion(fd: FormData) {
 
 export async function saveBoqItem(fd: FormData) {
   const { supabase, finish } = await ctx(fd);
+  const scope = str(fd, "scope") || (str(fd, "unit_id") ? "UNIT" : "PROJECT");
   const { error } = await supabase.rpc("upsert_boq_item", {
     target_version: str(fd, "version_id"),
     target_item: optStr(fd, "item_id"),
     data: {
       cost_category_id: str(fd, "cost_category_id"),
-      unit_id: str(fd, "unit_id"),
+      // Scope: whole project, once per house (template), or one house only.
+      unit_id: scope === "UNIT" ? str(fd, "unit_id") : "",
+      per_unit: scope === "PER_UNIT",
+      house_type_id: scope === "PER_UNIT" ? str(fd, "house_type_id") : "",
+      parent_id: str(fd, "parent_id"),
+      is_group: str(fd, "is_group") === "true",
+      overrides_item_id: str(fd, "overrides_item_id"),
+      spec_item_id: str(fd, "spec_item_id"),
       item_code: str(fd, "item_code"),
       description: str(fd, "description"),
       uom: str(fd, "uom"),
       quantity: str(fd, "quantity"),
       rate: str(fd, "rate"),
+      note: str(fd, "note"),
     },
   });
   finish(error, "budget");

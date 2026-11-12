@@ -24,6 +24,7 @@ type Labels = {
   areaHint: string;
   unitsRate: string;
   unitsRateHint: string;
+  boqHint: string;
   save: string;
   methods: Record<string, string>;
   timings: Record<string, string>;
@@ -55,7 +56,7 @@ export function ForecastLineForm({
   const methods =
     kind === "REVENUE"
       ? (["UNITS_FROM_SYSTEM", "PER_UNIT", "LUMP"] as const)
-      : (["LUMP", "PER_SQM", "PER_UNIT", "PCT_REVENUE"] as const);
+      : (["LUMP", "PER_SQM", "PER_UNIT", "PCT_REVENUE", "FROM_BOQ"] as const);
   const [category, setCategory] = useState(line?.category ?? categoryOptions[0]);
   const [method, setMethod] = useState<string>(line?.method ?? methods[0]);
   const perSqm = method === "PER_SQM";
@@ -126,6 +127,7 @@ export function ForecastLineForm({
           </Field>
         </FormGrid>
       ) : null}
+      {method === "FROM_BOQ" ? <p className="text-2xs text-muted">{labels.boqHint}</p> : null}
       {method === "PCT_REVENUE" ? (
         <Field label={labels.pct}>
           <Input name="pct" inputMode="decimal" defaultValue={line?.pct || ""} />
@@ -146,7 +148,11 @@ export function ForecastLineForm({
         </Field>
         {kind === "COST" ? (
           <Field label={labels.costCategory} hint={labels.costCategoryHint}>
-            <Select name="cost_category_id" defaultValue={line?.cost_category_id ?? ""}>
+            <Select
+              name="cost_category_id"
+              required={method === "FROM_BOQ"}
+              defaultValue={line?.cost_category_id ?? ""}
+            >
               <option value="">{labels.none}</option>
               {costCategories.map((c) => (
                 <option key={c.id} value={c.id}>
