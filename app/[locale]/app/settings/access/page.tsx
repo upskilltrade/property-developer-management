@@ -141,7 +141,7 @@ export default async function AccessPage({ params }: { params: Promise<{ locale:
   );
   const scopeFields = (
     <FormGrid>
-      <Field label={a.scope}>
+      <Field label={a.scope} hint={a.scopeHint}>
         <Select name="scope_type" defaultValue="PROJECT">
           <option value="PROJECT">{a.scopeProject}</option>
           <option value="ORGANIZATION">{a.scopeOrg}</option>
