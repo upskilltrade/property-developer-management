@@ -91,6 +91,8 @@ export type ForecastFacts = {
   /** Totals per cost category of the working BOQ version (FROM_BOQ lines). */
   boqByCategory?: Map<string, number>;
   boqVersion?: { version: number; status: string } | null;
+  /** The viewer may not read the BOQ totals (FROM_BOQ lines would be wrong). */
+  boqDenied?: boolean;
 };
 
 const n = (v: unknown) => {

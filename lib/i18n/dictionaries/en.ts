@@ -1989,6 +1989,9 @@ const en: Dictionary = {
       '{n} houses have no list price yet, so revenue is incomplete. Click "Edit" on the house sales line and enter an expected price per house, or set list prices on the unit pages.',
     unpricedRate: "+ {rate} × {n} houses without a price",
     fromBoqVersion: "From BOQ v{n} ({status})",
+    noBoqAccess: "This account may not view the BOQ costs",
+    noBoqAccessBody:
+      "This plan takes its costs from the BOQ, so it cannot be shown to this account. Ask an admin for finance or cost access to the project.",
     noBoq: "No BOQ yet",
     kpi: {
       revenue: "Forecast revenue",
@@ -2350,6 +2353,8 @@ const en: Dictionary = {
     scope: "Scope",
     scopeOrg: "Organization-wide",
     scopeProject: "Single project",
+    scopeHint:
+      'Owners/admins who must edit the financial plan, the BOQ, approve and manage users need "Whole organization". A project scope only gets the role\'s own permissions (Owner = view only)',
     currentRoles: "Current roles",
     noRoles: "No roles",
     noMembers: "No members yet",

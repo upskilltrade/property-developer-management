@@ -19,7 +19,7 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     { data: cost },
     { data: categories },
     { data: parts },
-    { data: boq },
+    { data: boq, error: boqError },
   ] = await Promise.all([
     supabase.from("forecast_plans").select("*").eq("project_id", projectId).maybeSingle(),
     supabase
@@ -98,6 +98,7 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     totalPlotArea,
     actualByCategory,
     boqByCategory: new Map(boqRows.map((r) => [r.cost_category_id, toNumber(r.amount)])),
+    boqDenied: Boolean(boqError),
     boqVersion: boqRows[0] ? { version: boqRows[0].version, status: boqRows[0].status } : null,
   };
   const num = (v: unknown) => (v == null ? null : toNumber(v));

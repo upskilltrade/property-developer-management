@@ -96,6 +96,13 @@ export default async function ProjectForecast({
       </Panel>
     );
 
+  // Never show FROM_BOQ lines as 0 to someone who may not read the BOQ: say so instead.
+  if (data.facts.boqDenied && data.lines.some((l) => l.method === "FROM_BOQ"))
+    return (
+      <Panel>
+        <EmptyState icon={<ShieldAlert />} title={f.noBoqAccess} body={f.noBoqAccessBody} />
+      </Panel>
+    );
   const plan = data.plan;
   const result = computeForecast(plan, data.lines, data.facts);
   const revenueGap =
