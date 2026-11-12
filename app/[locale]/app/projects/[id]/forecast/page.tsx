@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveLocale } from "@/lib/i18n";
+import { label } from "@/lib/i18n/label";
 import { formatMoney, formatMonth, formatNumber, formatPercent } from "@/lib/format";
 import {
   cashflow,
@@ -147,6 +148,12 @@ export default async function ProjectForecast({
     if (l.method === "PER_UNIT")
       return `${formatNumber(locale, l.rate)} × ${formatNumber(locale, l.quantity)}`;
     if (l.method === "PCT_REVENUE") return `${formatNumber(locale, l.pct, 3)}% ${f.ofRevenue}`;
+    if (l.method === "FROM_BOQ")
+      return data.facts.boqVersion
+        ? f.fromBoqVersion
+            .replace("{n}", String(data.facts.boqVersion.version))
+            .replace("{status}", label(t.status.budgetVersion, data.facts.boqVersion.status))
+        : f.noBoq;
     if (l.method === "UNITS_FROM_SYSTEM")
       return data.facts.unpricedUnits && l.rate
         ? `${f.methods.UNITS_FROM_SYSTEM} ${f.unpricedRate

@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/components/ui/cn";
 import { BoqImport } from "@/components/domain/boq-import";
 import { aiConfigured } from "@/lib/ai";
+import { buildBoq, groupOptions, templateUnits, type BoqItem, type BoqUnit } from "@/lib/boq";
 import {
   cancelOrder,
   certifyClaim,
@@ -77,7 +78,7 @@ export default async function ProjectProcurement({
     .maybeSingle();
   if (!project) notFound();
   const [{ data: units }, { data: categories }, { data: partners }] = await Promise.all([
-    supabase.from("units").select("id,code").eq("project_id", id).order("code"),
+    supabase.from("units").select("id,code,house_type_id").eq("project_id", id).order("code"),
     supabase.from("cost_categories").select("id,code,name").eq("active", true).order("code"),
     supabase
       .from("partner_organizations")
@@ -266,27 +267,81 @@ export default async function ProjectProcurement({
       (versions ?? []).find((v) => v.status === "DRAFT" || v.status === "SUBMITTED") ??
       (versions ?? []).find((v) => v.status === "APPROVED") ??
       versions?.[0];
-    const { data: items } = current
-      ? await supabase
-          .from("boq_items")
-          .select("id,cost_category_id,unit_id,item_code,description,uom,quantity,rate,amount")
-          .eq("budget_version_id", current.id)
-          .is("removed_at", null)
-          .order("created_at")
-      : { data: [] };
-    const editable = current?.status === "DRAFT";
+    const [{ data: rawItems }, { data: houseTypes }, { data: specItems }] = await Promise.all([
+      current
+        ? supabase
+            .from("boq_items")
+            .select(
+              "id,cost_category_id,parent_id,is_group,per_unit,house_type_id,unit_id,overrides_item_id,spec_item_id,item_code,description,uom,quantity,rate,amount,sort_order,note",
+            )
+            .eq("budget_version_id", current.id)
+            .is("removed_at", null)
+            .order("sort_order")
+        : Promise.resolve({ data: [] }),
+      supabase
+        .from("house_types")
+        .select("id,code,name")
+        .eq("organization_id", project!.organization_id)
+        .eq("active", true)
+        .order("code"),
+      supabase
+        .from("spec_items")
+        .select("id,item_no,name")
+        .eq("project_id", id)
+        .eq("active", true)
+        .order("seq"),
+    ]);
+    const items: BoqItem[] = ((rawItems ?? []) as BoqItem[]).map((i) => ({
+      ...i,
+      quantity: toNumber(i.quantity),
+      rate: toNumber(i.rate),
+      amount: toNumber(i.amount),
+    }));
+    const boqUnits: BoqUnit[] = (units ?? []).map((u) => ({
+      id: u.id,
+      code: u.code,
+      house_type_id: u.house_type_id ?? null,
+    }));
+    const unitView = q.unit && unitCode.has(q.unit) ? q.unit : null;
+    const sections = buildBoq(items, boqUnits, unitView);
+    const groups = groupOptions(buildBoq(items, boqUnits));
+    const specName = new Map((specItems ?? []).map((s) => [s.id, `${s.item_no} · ${s.name}`]));
+    const editable = current?.status === "DRAFT" && !unitView;
     const hasOpen = (versions ?? []).some((v) => v.status === "DRAFT" || v.status === "SUBMITTED");
-    const total = (items ?? []).reduce((s, i) => s + toNumber(i.amount), 0);
-    const byCat = [...new Set((items ?? []).map((i) => i.cost_category_id))];
-    const itemForm = (item?: (typeof items & object)[number]) => (
+    const total = sections.reduce((s, x) => s + x.total, 0);
+    const qty = (v: number) => toNumber(v).toLocaleString(locale, { maximumFractionDigits: 3 });
+
+    const scopeOf = (i?: BoqItem) => (i?.per_unit ? "PER_UNIT" : i?.unit_id ? "UNIT" : "PROJECT");
+    const itemForm = (item?: BoqItem, preset?: { parent?: string; group?: boolean }) => (
       <form action={saveBoqItem} className="space-y-3">
         <Hidden values={{ ...ctx, version_id: current!.id, item_id: item?.id ?? "" }} />
         <FormGrid>
-          <Field label={p.costCode} required>
-            {categorySelect("cost_category_id", item?.cost_category_id)}
+          <Field label={p.boq.kind}>
+            <Select
+              name="is_group"
+              defaultValue={(item?.is_group ?? preset?.group) ? "true" : "false"}
+            >
+              <option value="false">{p.boq.kindItem}</option>
+              <option value="true">{p.boq.kindGroup}</option>
+            </Select>
           </Field>
-          <Field label={p.unit}>{unitSelect("unit_id", item?.unit_id ?? "")}</Field>
+          <Field label={p.boq.parent} hint={p.boq.parentHint}>
+            <Select name="parent_id" defaultValue={item?.parent_id ?? preset?.parent ?? ""}>
+              <option value="">{p.boq.topLevel}</option>
+              {groups
+                .filter((g) => g.id !== item?.id)
+                .map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {"— ".repeat(g.depth)}
+                    {g.label}
+                  </option>
+                ))}
+            </Select>
+          </Field>
         </FormGrid>
+        <Field label={p.costCode} hint={p.boq.costCodeHint}>
+          {categorySelect("cost_category_id", item?.cost_category_id)}
+        </Field>
         <FormGrid>
           <Field label={p.itemCode}>
             <Input name="item_code" defaultValue={item?.item_code ?? ""} />
@@ -299,32 +354,160 @@ export default async function ProjectProcurement({
           <Field label={p.uom}>
             <Input name="uom" defaultValue={item?.uom ?? "LS"} />
           </Field>
-          <Field label={p.quantity} required>
+          <Field label={p.quantity}>
             <Input
               name="quantity"
               type="number"
               min="0"
               step="any"
-              required
               defaultValue={item?.quantity ?? 1}
             />
           </Field>
-          <Field label={p.rate} required>
-            <Input
-              name="rate"
-              type="number"
-              min="0"
-              step="any"
-              required
-              defaultValue={item?.rate ?? 0}
-            />
+          <Field label={p.rate}>
+            <Input name="rate" type="number" min="0" step="any" defaultValue={item?.rate ?? 0} />
           </Field>
         </FormGrid>
+        <FormGrid cols={3}>
+          <Field label={p.boq.scope} hint={p.boq.scopeHint}>
+            <Select name="scope" defaultValue={scopeOf(item)}>
+              <option value="PROJECT">{p.boq.scopes.PROJECT}</option>
+              <option value="PER_UNIT">{p.boq.scopes.PER_UNIT}</option>
+              <option value="UNIT">{p.boq.scopes.UNIT}</option>
+            </Select>
+          </Field>
+          <Field label={p.unit}>{unitSelect("unit_id", item?.unit_id ?? "")}</Field>
+          <Field label={p.boq.houseType}>
+            <Select name="house_type_id" defaultValue={item?.house_type_id ?? ""}>
+              <option value="">{p.boq.allHouseTypes}</option>
+              {(houseTypes ?? []).map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.code} · {h.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </FormGrid>
+        <Field label={p.boq.specItem}>
+          <Select name="spec_item_id" defaultValue={item?.spec_item_id ?? ""}>
+            <option value="">{p.boq.noSpec}</option>
+            {(specItems ?? []).map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.item_no} · {s.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={p.note}>
+          <Input name="note" defaultValue={item?.note ?? ""} />
+        </Field>
         <SheetFooter>
           <SubmitButton>{t.common.save}</SubmitButton>
         </SheetFooter>
       </form>
     );
+    // One house's own quantity/rate for a per-house line (0 = not in this house).
+    const overrideForm = (tpl: BoqItem, o?: BoqItem) => (
+      <form action={saveBoqItem} className="space-y-3">
+        <Hidden
+          values={{
+            ...ctx,
+            version_id: current!.id,
+            item_id: o?.id ?? "",
+            overrides_item_id: tpl.id,
+            scope: "UNIT",
+            is_group: "false",
+            cost_category_id: tpl.cost_category_id,
+            spec_item_id: o?.spec_item_id ?? tpl.spec_item_id ?? "",
+          }}
+        />
+        <p className="text-2xs text-muted">{p.boq.overrideHint}</p>
+        <FormGrid>
+          <Field label={p.unit} required>
+            <Select name="unit_id" required defaultValue={o?.unit_id ?? ""}>
+              {templateUnits(tpl, boqUnits).map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.code}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={p.description} required>
+            <Input name="description" required defaultValue={o?.description ?? tpl.description} />
+          </Field>
+        </FormGrid>
+        <FormGrid cols={3}>
+          <Field label={p.uom}>
+            <Input name="uom" defaultValue={o?.uom ?? tpl.uom} />
+          </Field>
+          <Field label={p.quantity}>
+            <Input
+              name="quantity"
+              type="number"
+              min="0"
+              step="any"
+              defaultValue={o?.quantity ?? tpl.quantity}
+            />
+          </Field>
+          <Field label={p.rate}>
+            <Input
+              name="rate"
+              type="number"
+              min="0"
+              step="any"
+              defaultValue={o?.rate ?? tpl.rate}
+            />
+          </Field>
+        </FormGrid>
+        <Field label={p.note}>
+          <Input name="note" defaultValue={o?.note ?? ""} />
+        </Field>
+        <SheetFooter>
+          <SubmitButton>{t.common.save}</SubmitButton>
+        </SheetFooter>
+      </form>
+    );
+    const rowActions = (i: BoqItem, depth: number) =>
+      editable ? (
+        <div className="flex justify-end gap-1">
+          {i.is_group && depth < 4 ? (
+            <Sheet
+              title={p.boq.addUnder.replace("{name}", i.description)}
+              triggerLabel={p.boq.addChild}
+              triggerVariant="ghost"
+              triggerSize="xs"
+            >
+              {itemForm(undefined, { parent: i.id })}
+            </Sheet>
+          ) : null}
+          {i.per_unit ? (
+            <Sheet
+              title={p.boq.override}
+              triggerLabel={p.boq.override}
+              triggerIcon={null}
+              triggerVariant="ghost"
+              triggerSize="xs"
+            >
+              {overrideForm(i)}
+            </Sheet>
+          ) : null}
+          <Sheet
+            title={t.common.edit}
+            triggerLabel={t.common.edit}
+            triggerIcon={null}
+            triggerVariant="ghost"
+            triggerSize="xs"
+          >
+            {itemForm(i)}
+          </Sheet>
+          <form action={removeBoqItem}>
+            <Hidden values={{ ...ctx, item_id: i.id }} />
+            <SubmitButton size="xs" variant="ghost" aria-label={p.remove}>
+              <Trash2 />
+            </SubmitButton>
+          </form>
+        </div>
+      ) : null;
+
     return (
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -350,15 +533,42 @@ export default async function ProjectProcurement({
             description={
               current.review_note
                 ? `${p.reason}: ${current.review_note}`
-                : (current.note ?? undefined)
+                : unitView
+                  ? p.boq.unitViewHint.replace("{unit}", unitCode.get(unitView) ?? "")
+                  : (current.note ?? p.boq.hint)
             }
             actions={
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <form className="flex items-center gap-1">
+                  <input type="hidden" name="view" value="boq" />
+                  <Select name="unit" defaultValue={unitView ?? ""} className="h-7 w-32 text-2xs">
+                    <option value="">{p.boq.wholeProject}</option>
+                    {(units ?? []).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.code}
+                      </option>
+                    ))}
+                  </Select>
+                  <button
+                    type="submit"
+                    className="h-7 rounded border border-line-strong px-2 text-2xs"
+                  >
+                    {t.common.filter}
+                  </button>
+                </form>
                 <Badge tone={budgetTone[current.status] ?? "neutral"}>
                   {label(t.status.budgetVersion, current.status)}
                 </Badge>
                 {editable ? (
                   <>
+                    <Sheet
+                      title={p.boq.addGroup}
+                      triggerLabel={p.boq.addGroup}
+                      triggerVariant="secondary"
+                      triggerSize="xs"
+                    >
+                      {itemForm(undefined, { group: true })}
+                    </Sheet>
                     <Sheet
                       title={p.addItem}
                       triggerLabel={p.addItem}
@@ -405,13 +615,12 @@ export default async function ProjectProcurement({
               </div>
             }
           >
-            {items?.length ? (
+            {sections.length ? (
               <Table>
                 <THead>
                   <tr>
                     <TH>{p.itemCode}</TH>
                     <TH>{p.description}</TH>
-                    <TH>{p.unit}</TH>
                     <TH align="right">{p.quantity}</TH>
                     <TH>{p.uom}</TH>
                     <TH align="right">{p.rate}</TH>
@@ -420,56 +629,121 @@ export default async function ProjectProcurement({
                   </tr>
                 </THead>
                 <tbody>
-                  {byCat.map((cat) => {
-                    const list = (items ?? []).filter((i) => i.cost_category_id === cat);
-                    return [
-                      <TR key={`h-${cat}`}>
-                        <TD className="bg-subtle font-semibold" colSpan={6}>
-                          {catLabel.get(cat)}
-                        </TD>
-                        <TD align="right" className="bg-subtle font-semibold">
-                          {money(list.reduce((s, i) => s + toNumber(i.amount), 0))}
-                        </TD>
-                        {editable ? <TD className="bg-subtle" /> : null}
-                      </TR>,
-                      ...list.map((i) => (
+                  {sections.map((s) => [
+                    <TR key={`h-${s.cost_category_id}`}>
+                      <TD className="bg-subtle font-semibold" colSpan={5}>
+                        {catLabel.get(s.cost_category_id)}
+                      </TD>
+                      <TD align="right" className="bg-subtle font-semibold">
+                        {money(s.total)}
+                      </TD>
+                      {editable ? <TD className="bg-subtle" /> : null}
+                    </TR>,
+                    ...s.rows.map((r) => {
+                      const i = r.item;
+                      const shown = r.replacedBy ?? i;
+                      const pad = { paddingLeft: `${(r.depth - 1) * 1.25}rem` };
+                      if (i.is_group)
+                        return (
+                          <TR key={i.id}>
+                            <TD className="font-mono text-[12px] text-muted">
+                              {i.item_code ?? ""}
+                            </TD>
+                            <TD colSpan={4}>
+                              <p
+                                style={pad}
+                                className={cn("font-semibold", r.depth > 1 && "font-medium")}
+                              >
+                                {i.description}
+                              </p>
+                            </TD>
+                            <TD align="right" className="font-semibold">
+                              {money(r.total)}
+                            </TD>
+                            {editable ? <TD>{rowActions(i, r.depth)}</TD> : null}
+                          </TR>
+                        );
+                      return (
                         <TR key={i.id}>
                           <TD className="font-mono text-[12px] text-muted">{i.item_code ?? "—"}</TD>
-                          <TD>{i.description}</TD>
-                          <TD className="font-mono text-[12px] text-muted">
-                            {i.unit_id ? unitCode.get(i.unit_id) : "—"}
+                          <TD>
+                            <div style={pad}>
+                              <p>{shown.description}</p>
+                              <p className="text-2xs text-muted">
+                                {[
+                                  i.per_unit
+                                    ? unitView
+                                      ? r.replacedBy
+                                        ? p.boq.changedForUnit
+                                        : p.boq.standard
+                                      : p.boq.perHouse.replace("{n}", String(r.houses ?? 0))
+                                    : i.unit_id
+                                      ? unitCode.get(i.unit_id)
+                                      : null,
+                                  i.spec_item_id ? specName.get(i.spec_item_id) : null,
+                                  shown.note,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </p>
+                              {r.overrides.map((o) => (
+                                <div
+                                  key={o.id}
+                                  className="mt-1 flex items-center gap-2 text-2xs text-muted"
+                                >
+                                  <span className="font-mono">{unitCode.get(o.unit_id ?? "")}</span>
+                                  <span>
+                                    {toNumber(o.quantity)
+                                      ? `${qty(o.quantity)} ${o.uom} × ${money(o.rate)} = ${money(o.amount)}`
+                                      : p.boq.notInHouse}
+                                  </span>
+                                  {editable ? (
+                                    <>
+                                      <Sheet
+                                        title={p.boq.override}
+                                        triggerLabel={t.common.edit}
+                                        triggerIcon={null}
+                                        triggerVariant="ghost"
+                                        triggerSize="xs"
+                                      >
+                                        {overrideForm(i, o)}
+                                      </Sheet>
+                                      <form action={removeBoqItem}>
+                                        <Hidden values={{ ...ctx, item_id: o.id }} />
+                                        <SubmitButton
+                                          size="xs"
+                                          variant="ghost"
+                                          aria-label={p.remove}
+                                        >
+                                          <Trash2 />
+                                        </SubmitButton>
+                                      </form>
+                                    </>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
                           </TD>
                           <TD align="right" className="num">
-                            {toNumber(i.quantity).toLocaleString()}
+                            {qty(shown.quantity)}
                           </TD>
-                          <TD className="text-muted">{i.uom}</TD>
-                          <TD align="right">{money(i.rate)}</TD>
-                          <TD align="right">{money(i.amount)}</TD>
-                          {editable ? (
-                            <TD>
-                              <div className="flex gap-1">
-                                <Sheet
-                                  title={p.addItem}
-                                  triggerLabel={t.common.edit}
-                                  triggerIcon={null}
-                                  triggerVariant="ghost"
-                                  triggerSize="xs"
-                                >
-                                  {itemForm(i)}
-                                </Sheet>
-                                <form action={removeBoqItem}>
-                                  <Hidden values={{ ...ctx, item_id: i.id }} />
-                                  <SubmitButton size="xs" variant="ghost" aria-label={p.remove}>
-                                    <Trash2 />
-                                  </SubmitButton>
-                                </form>
-                              </div>
-                            </TD>
-                          ) : null}
+                          <TD className="text-muted">{shown.uom}</TD>
+                          <TD align="right">{money(shown.rate)}</TD>
+                          <TD align="right">{money(r.total)}</TD>
+                          {editable ? <TD>{rowActions(i, r.depth)}</TD> : null}
                         </TR>
-                      )),
-                    ];
-                  })}
+                      );
+                    }),
+                  ])}
+                  <TR>
+                    <TD className="font-semibold" colSpan={5}>
+                      {p.total}
+                    </TD>
+                    <TD align="right" className="font-semibold">
+                      {money(total)}
+                    </TD>
+                    {editable ? <TD /> : null}
+                  </TR>
                 </tbody>
               </Table>
             ) : (

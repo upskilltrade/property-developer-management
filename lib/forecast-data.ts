@@ -19,6 +19,7 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     { data: cost },
     { data: categories },
     { data: parts },
+    { data: boq },
   ] = await Promise.all([
     supabase.from("forecast_plans").select("*").eq("project_id", projectId).maybeSingle(),
     supabase
@@ -47,7 +48,10 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
       .neq("sales_contracts.ownership_type", "FREEHOLD")
       .in("kind", ["LAND_LEASE", "CONSTRUCTION"])
       .is("removed_at", null),
+    supabase.rpc("get_boq_totals", { target_project: projectId }),
   ]);
+  type BoqTotal = { cost_category_id: string; amount: number; version: number; status: string };
+  const boqRows = (boq ?? []) as BoqTotal[];
   const partTotal = (kind: string) =>
     (parts ?? []).filter((x) => x.kind === kind).reduce((a, x) => a + toNumber(x.amount), 0);
 
@@ -93,6 +97,8 @@ export async function loadForecast(supabase: Supabase, projectId: string) {
     totalFloorArea,
     totalPlotArea,
     actualByCategory,
+    boqByCategory: new Map(boqRows.map((r) => [r.cost_category_id, toNumber(r.amount)])),
+    boqVersion: boqRows[0] ? { version: boqRows[0].version, status: boqRows[0].status } : null,
   };
   const num = (v: unknown) => (v == null ? null : toNumber(v));
   return {
